@@ -17,9 +17,11 @@
  *   do <action> [args] — Execute action + wait 1s + screenshot
  *                        e.g., do tap 50 50 / do scroll / do tapText Settings
  *   do --source <action> [args] — Same as do, but also dumps UI source
+ *   list-apps [filter]  — List installed apps (optional text filter, needs ideviceinstaller)
  */
 
 import { writeFileSync, readFileSync, existsSync } from 'fs';
+import { execFileSync } from 'child_process';
 
 const PORT = 8100;
 const BASE = `http://localhost:${PORT}`;
@@ -181,6 +183,25 @@ async function cmdBack() {
   await cmdSwipe(1, 50, 80, 50);
 }
 
+async function cmdListApps(filter?: string) {
+  try {
+    const output = execFileSync('ideviceinstaller', ['list', '--user'], { encoding: 'utf-8' });
+    const lines = output.trim().split('\n');
+    const filtered = filter
+      ? lines.filter((l) => l.toLowerCase().includes(filter.toLowerCase()))
+      : lines;
+    console.log(filtered.join('\n'));
+    console.log(`\n${filtered.length} app(s)${filter ? ` matching "${filter}"` : ''}`);
+  } catch (e) {
+    const msg = (e as Error).message;
+    if (msg.includes('ENOENT')) {
+      console.error('ideviceinstaller not found. Install with: brew install ideviceinstaller');
+    } else {
+      console.error('Error listing apps:', msg.slice(0, 300));
+    }
+  }
+}
+
 async function cmdSource() {
   const s = await getSession();
   const resp = await wdaFetch(`/session/${s.sessionId}/source`);
@@ -244,6 +265,7 @@ try {
     case 'home': await cmdHome(); break;
     case 'back': await cmdBack(); break;
     case 'source': await cmdSource(); break;
+    case 'list-apps': await cmdListApps(args[0]); break;
     case 'do': {
       const includeSource = args[0] === '--source';
       const doArgs = includeSource ? args.slice(1) : args;
@@ -251,7 +273,7 @@ try {
       break;
     }
     default:
-      console.log('Commands: start, screenshot/ss, tap, tapText/tt, type, swipe, scroll, launch, home, back, source, do');
+      console.log('Commands: start, screenshot/ss, tap, tapText/tt, type, swipe, scroll, launch, home, back, source, do, list-apps');
   }
 } catch (e) {
   console.error('Error:', (e as Error).message);
