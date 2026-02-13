@@ -18,8 +18,14 @@
  *                        e.g., do tap 50 50 / do scroll / do tapText Settings
  *   do --source <action> [args] — Same as do, but also dumps UI source
  *   list-apps [filter]  — List installed apps (optional text filter, needs ideviceinstaller)
+ *   agent <task>        — AI agent loop: screenshot → AI reason → execute → repeat
+ *                         e.g., agent "open Settings and toggle Dark Mode"
+ *                         Options: --app <bundleId> to launch app first
+ *                                  --max-steps <n> (default: 30)
+ *                                  --model <name> (default: auto-detect)
  */
 
+import 'dotenv/config';
 import { writeFileSync, readFileSync, existsSync } from 'fs';
 import { execFileSync } from 'child_process';
 
@@ -249,6 +255,226 @@ async function cmdDo(actionArgs: string[], includeSource: boolean) {
   }
 }
 
+// ── Agent Mode ──────────────────────────────────
+
+interface AgentDecision {
+  action: string;
+  params?: Record<string, unknown>;
+  reasoning: string;
+  progress: number;
+}
+
+function buildAgentSystemPrompt(task: string, step: number, maxSteps: number, history: string[]): string {
+  return `You are an AI agent controlling a real iPhone via WDA (WebDriverAgent).
+
+OBJECTIVE: ${task}
+
+COORDINATE GUIDE — estimate tap positions as PERCENTAGES (0-100):
+- 0% = left/top edge, 50% = center, 100% = right/bottom edge
+- Tab bar items: y ~93-96%, x varies by position
+- Nav back arrow: x ~5-10%, y ~6-8%
+- Top-right button: x ~90-95%, y ~6-8%
+- FAB (+): typically x ~85%, y ~85%
+
+AVAILABLE ACTIONS (respond with ONLY valid JSON, no markdown):
+
+tap: {"action":"tap","params":{"x":50,"y":50},"reasoning":"...","progress":N}
+tapText: {"action":"tapText","params":{"text":"Button Label"},"reasoning":"...","progress":N}
+inputText: {"action":"inputText","params":{"text":"hello"},"reasoning":"...","progress":N}
+scroll: {"action":"scroll","params":{},"reasoning":"...","progress":N}
+swipe: {"action":"swipe","params":{"startX":50,"startY":80,"endX":50,"endY":20},"reasoning":"...","progress":N}
+back: {"action":"back","params":{},"reasoning":"...","progress":N}
+home: {"action":"home","params":{},"reasoning":"...","progress":N}
+launch: {"action":"launch","params":{"bundleId":"com.example.app"},"reasoning":"...","progress":N}
+wait: {"action":"wait","params":{},"reasoning":"...","progress":N}
+done: {"action":"done","params":{},"reasoning":"Task completed because...","progress":100}
+failed: {"action":"failed","params":{},"reasoning":"Cannot complete because...","progress":N}
+
+RULES:
+- Prefer tapText when you see readable text on a button
+- Use tap coordinates when tapText might fail (icons, images)
+- Only inputText AFTER tapping a text field (cursor/keyboard visible)
+- If stuck (same action 2+ times), try completely different approach
+
+PROGRESS: Step ${step}/${maxSteps}
+Recent actions: ${history.slice(-5).join(' → ') || 'none'}
+
+Respond with ONLY valid JSON.`;
+}
+
+async function getScreenshotBase64(): Promise<string> {
+  const resp = await sessionFetch('/screenshot');
+  const data = (await resp.json()) as { value?: string };
+  if (!data.value) throw new Error('No screenshot data');
+  return data.value;
+}
+
+async function executeAgentAction(decision: AgentDecision): Promise<string> {
+  const p = decision.params ?? {};
+  switch (decision.action) {
+    case 'tap':
+      await cmdTap(Number(p.x ?? 50), Number(p.y ?? 50));
+      return `tap(${p.x},${p.y})`;
+    case 'tapText':
+      await cmdTapText(String(p.text ?? ''));
+      return `tapText("${String(p.text ?? '').slice(0, 20)}")`;
+    case 'inputText':
+      await cmdType(String(p.text ?? ''));
+      return `inputText("${String(p.text ?? '').slice(0, 20)}")`;
+    case 'scroll':
+      await cmdSwipe(50, 70, 50, 30);
+      return 'scroll';
+    case 'swipe':
+      await cmdSwipe(Number(p.startX ?? 50), Number(p.startY ?? 80), Number(p.endX ?? 50), Number(p.endY ?? 20));
+      return `swipe(${p.startX},${p.startY}→${p.endX},${p.endY})`;
+    case 'back':
+      await cmdBack();
+      return 'back';
+    case 'home':
+      await cmdHome();
+      return 'home';
+    case 'launch':
+      await cmdLaunch(String(p.bundleId ?? ''));
+      return `launch(${p.bundleId})`;
+    case 'wait':
+      await new Promise((r) => setTimeout(r, 2000));
+      return 'wait';
+    default:
+      return decision.action;
+  }
+}
+
+async function cmdAgent(task: string, options: { app?: string; maxSteps?: number; model?: string }) {
+  const maxSteps = options.maxSteps ?? 30;
+
+  // Auto-detect AI provider from env
+  const googleKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY;
+  const openaiKey = process.env.OPENAI_API_KEY;
+
+  if (!googleKey && !openaiKey) {
+    console.error('No API key. Set GOOGLE_GENERATIVE_AI_API_KEY or OPENAI_API_KEY');
+    process.exit(1);
+  }
+
+  // Dynamic import to keep startup fast for non-agent commands
+  const { generateText } = await import('ai');
+  let getModel: () => unknown;
+
+  if (googleKey) {
+    const { createGoogleGenerativeAI } = await import('@ai-sdk/google');
+    const google = createGoogleGenerativeAI({ apiKey: googleKey });
+    const modelName = options.model ?? 'gemini-2.5-flash';
+    getModel = () => google(modelName);
+    console.log(`AI: Google ${modelName}`);
+  } else {
+    const { createOpenAI } = await import('@ai-sdk/openai');
+    const openai = createOpenAI({ apiKey: openaiKey! });
+    const modelName = options.model ?? 'gpt-4o';
+    getModel = () => openai(modelName);
+    console.log(`AI: OpenAI ${modelName}`);
+  }
+
+  console.log(`Task: ${task}`);
+  console.log(`Max steps: ${maxSteps}\n`);
+
+  // Launch app if specified
+  if (options.app) {
+    await cmdLaunch(options.app);
+    await new Promise((r) => setTimeout(r, 2000));
+  }
+
+  const history: string[] = [];
+  const conversationHistory: Array<{ role: 'user' | 'assistant'; content: unknown }> = [];
+
+  for (let step = 1; step <= maxSteps; step++) {
+    console.log(`\n${'─'.repeat(40)}`);
+    console.log(`Step ${step}/${maxSteps}`);
+
+    // Screenshot
+    let base64: string;
+    try {
+      base64 = await getScreenshotBase64();
+    } catch (e) {
+      console.error(`Screenshot failed: ${(e as Error).message}`);
+      await new Promise((r) => setTimeout(r, 2000));
+      continue;
+    }
+
+    // Build AI message
+    const systemPrompt = buildAgentSystemPrompt(task, step, maxSteps, history);
+    const userMsg = {
+      role: 'user' as const,
+      content: [
+        { type: 'image' as const, image: Buffer.from(base64, 'base64') },
+        { type: 'text' as const, text: 'Analyze the screenshot. What is the ONE best action?' },
+      ],
+    };
+
+    // Trim conversation history to prevent token overflow
+    if (conversationHistory.length > 10) {
+      conversationHistory.splice(0, conversationHistory.length - 8);
+    }
+    conversationHistory.push(userMsg);
+
+    // Ask AI
+    let decision: AgentDecision;
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const response = await (generateText as any)({
+        model: getModel(),
+        system: systemPrompt,
+        messages: conversationHistory,
+      });
+
+      conversationHistory.push({ role: 'assistant', content: response.text });
+
+      const jsonMatch = response.text.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) throw new Error('No JSON in AI response');
+      decision = JSON.parse(jsonMatch[0]) as AgentDecision;
+    } catch (e) {
+      console.error(`AI error: ${(e as Error).message}`);
+      await new Promise((r) => setTimeout(r, 2000));
+      continue;
+    }
+
+    console.log(`  Thinking: ${decision.reasoning}`);
+    console.log(`  Progress: ${decision.progress}%`);
+    console.log(`  Action: ${decision.action} ${decision.params ? JSON.stringify(decision.params) : ''}`);
+
+    // Handle terminal actions
+    if (decision.action === 'done') {
+      console.log(`\n${'═'.repeat(50)}`);
+      console.log(`SUCCESS — ${decision.reasoning}`);
+      console.log(`Steps: ${step}`);
+      console.log('═'.repeat(50));
+      return;
+    }
+    if (decision.action === 'failed') {
+      console.log(`\n${'═'.repeat(50)}`);
+      console.log(`FAILED — ${decision.reasoning}`);
+      console.log(`Steps: ${step}`);
+      console.log('═'.repeat(50));
+      process.exit(1);
+    }
+
+    // Execute action
+    try {
+      const actionStr = await executeAgentAction(decision);
+      history.push(actionStr);
+    } catch (e) {
+      console.error(`  Action failed: ${(e as Error).message}`);
+      history.push('error');
+    }
+
+    await new Promise((r) => setTimeout(r, 1500));
+  }
+
+  console.log(`\n${'═'.repeat(50)}`);
+  console.log(`TIMEOUT — Max steps (${maxSteps}) reached`);
+  console.log('═'.repeat(50));
+  process.exit(1);
+}
+
 // ── Main ────────────────────────────────────────
 const [cmd, ...args] = process.argv.slice(2);
 
@@ -266,6 +492,26 @@ try {
     case 'back': await cmdBack(); break;
     case 'source': await cmdSource(); break;
     case 'list-apps': await cmdListApps(args[0]); break;
+    case 'agent': {
+      // Parse agent options: agent [--app bundleId] [--max-steps N] [--model name] <task...>
+      let app: string | undefined;
+      let maxSteps: number | undefined;
+      let model: string | undefined;
+      const taskParts: string[] = [];
+      for (let i = 0; i < args.length; i++) {
+        if (args[i] === '--app' && args[i + 1]) { app = args[++i]; }
+        else if (args[i] === '--max-steps' && args[i + 1]) { maxSteps = Number(args[++i]); }
+        else if (args[i] === '--model' && args[i + 1]) { model = args[++i]; }
+        else { taskParts.push(args[i]!); }
+      }
+      const agentTask = taskParts.join(' ');
+      if (!agentTask) {
+        console.error('Usage: agent [--app <bundleId>] [--max-steps <n>] [--model <name>] <task>');
+        process.exit(1);
+      }
+      await cmdAgent(agentTask, { app, maxSteps, model });
+      break;
+    }
     case 'do': {
       const includeSource = args[0] === '--source';
       const doArgs = includeSource ? args.slice(1) : args;
@@ -273,7 +519,7 @@ try {
       break;
     }
     default:
-      console.log('Commands: start, screenshot/ss, tap, tapText/tt, type, swipe, scroll, launch, home, back, source, do, list-apps');
+      console.log('Commands: start, screenshot/ss, tap, tapText/tt, type, swipe, scroll, launch, home, back, source, do, list-apps, agent');
   }
 } catch (e) {
   console.error('Error:', (e as Error).message);
