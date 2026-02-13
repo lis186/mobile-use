@@ -5,6 +5,7 @@
 import ora, { type Ora } from 'ora';
 import pc from 'picocolors';
 import { MaestroClient } from './maestro.js';
+import { WDAClient } from './wda.js';
 import { TaskAgent } from './agent.js';
 import type { TaskConfig, AgentDecision, ExecutionResult } from './types.js';
 
@@ -22,17 +23,29 @@ function createSpinner(text: string): Ora {
 }
 
 export class TaskExecutor {
-  private maestro: MaestroClient;
+  private maestro: MaestroClient | WDAClient;
   private agent: TaskAgent;
   private config: TaskConfig;
 
   constructor(config: TaskConfig, apiKey: string, provider: 'google' | 'openai' = 'google') {
     this.config = config;
-    this.maestro = new MaestroClient({
-      bundleId: config.bundleId,
-      deviceId: config.deviceId,
-      iosDevice: config.iosDevice,
-    });
+
+    if (config.runner === 'wda' && config.iosDevice) {
+      this.maestro = new WDAClient({
+        udid: config.iosDevice.udid,
+        teamId: config.iosDevice.teamId ?? '',
+        bundleId: config.bundleId,
+        port: config.iosDevice.driverPort ?? 8100,
+      });
+    } else {
+      this.maestro = new MaestroClient({
+        bundleId: config.bundleId,
+        deviceId: config.deviceId,
+        iosDevice: config.iosDevice,
+        runner: config.runner,
+      });
+    }
+
     this.agent = new TaskAgent(apiKey, config.model, provider);
   }
 
@@ -45,109 +58,134 @@ export class TaskExecutor {
     }
     if (this.config.iosDevice) {
       console.log(pc.cyan('📲 iOS Device: ') + pc.white(this.config.iosDevice.udid));
-      console.log(pc.cyan('📦 App File: ') + pc.white(this.config.iosDevice.appFile));
+      if (this.config.runner) {
+        console.log(pc.cyan('🔧 Runner: ') + pc.white(this.config.runner));
+      }
+      if (this.config.iosDevice.appFile) {
+        console.log(pc.cyan('📦 App File: ') + pc.white(this.config.iosDevice.appFile));
+      }
     } else if (this.config.deviceId) {
       console.log(pc.cyan('📲 Device: ') + pc.white(this.config.deviceId));
     }
     console.log(pc.cyan('🔄 Max Steps: ') + pc.white(String(this.config.maxSteps)));
     console.log('');
 
-    const actionHistory: string[] = [];
-
-    if (this.maestro.hasBundleId()) {
-      const launchSpinner = createSpinner('Launching app...').start();
+    // Start WDA lifecycle if using WDA runner
+    if (this.maestro instanceof WDAClient) {
+      const wdaSpinner = createSpinner('Starting WDA server...').start();
       try {
-        await this.maestro.launch();
-        launchSpinner.succeed('App launched');
-        actionHistory.push('launched');
-        await sleep(3000);
+        await this.maestro.start();
+        wdaSpinner.succeed('WDA server ready');
       } catch (error) {
-        launchSpinner.fail('Failed to launch app');
+        wdaSpinner.fail('Failed to start WDA server');
         const err = error as Error;
         return { success: false, reason: err.message, steps: 0 };
       }
-    } else {
-      console.log(pc.dim('Skipping app launch (working with foreground app)'));
-      actionHistory.push('ready');
-      await sleep(1000);
-    }
-    let steps = 0;
-
-    // Task execution loop
-    while (steps < this.config.maxSteps) {
-      steps++;
-      console.log(pc.dim(`\n${'─'.repeat(40)}`));
-      console.log(pc.bold(`Step ${steps}/${this.config.maxSteps}`));
-
-      const observeSpinner = createSpinner('Capturing screen...').start();
-      let screenshot: string;
-
-      try {
-        screenshot = await this.maestro.screenshot(steps);
-        observeSpinner.succeed('Screen captured');
-      } catch (error) {
-        observeSpinner.fail('Screenshot failed');
-        const err = error as Error;
-        console.log(pc.yellow(`  ⚠️ ${err.message}`));
-        await sleep(2000);
-        continue;
-      }
-
-      // Decide
-      const thinkSpinner = createSpinner('AI thinking...').start();
-      let decision: AgentDecision;
-
-      try {
-        decision = await this.agent.decide(screenshot, this.config.task, {
-          stepNumber: steps,
-          maxSteps: this.config.maxSteps,
-          actionHistory,
-          successCriteria: this.config.successCriteria,
-          constraints: this.config.constraints,
-        });
-        thinkSpinner.succeed('Decision made');
-      } catch (error) {
-        thinkSpinner.fail('AI decision failed');
-        const err = error as Error;
-        console.log(pc.yellow(`  ⚠️ ${err.message}`));
-        await sleep(2000);
-        continue;
-      }
-
-      console.log(pc.dim(`  💭 ${decision.reasoning}`));
-      console.log(pc.blue(`  📊 Progress: ${decision.progress}%`));
-      console.log(
-        pc.green(`  🎬 Action: ${decision.action}`) +
-          (decision.params ? pc.dim(` ${JSON.stringify(decision.params)}`) : '')
-      );
-
-      // Handle completion
-      if (decision.action === 'done') {
-        console.log(pc.green('\n✅ Task completed successfully!'));
-        return { success: true, reason: decision.reasoning, steps };
-      }
-
-      if (decision.action === 'failed') {
-        console.log(pc.red('\n❌ Task failed: ') + decision.reasoning);
-        return { success: false, reason: decision.reasoning, steps };
-      }
-
-      // Execute action
-      try {
-        await this.executeAction(decision);
-        const actionStr = this.formatAction(decision);
-        actionHistory.push(actionStr);
-      } catch (error) {
-        const err = error as Error;
-        console.log(pc.yellow(`  ⚠️ Action failed: ${err.message}`));
-        actionHistory.push('error');
-      }
-
-      await sleep(1500);
     }
 
-    console.log(pc.yellow('\n⏱️ Max steps reached'));
-    return { success: false, reason: 'Timeout - max steps exceeded', steps };
+    const actionHistory: string[] = [];
+
+    try {
+      if (this.maestro.hasBundleId()) {
+        const launchSpinner = createSpinner('Launching app...').start();
+        try {
+          await this.maestro.launch();
+          launchSpinner.succeed('App launched');
+          actionHistory.push('launched');
+          await sleep(3000);
+        } catch (error) {
+          launchSpinner.fail('Failed to launch app');
+          const err = error as Error;
+          return { success: false, reason: err.message, steps: 0 };
+        }
+      } else {
+        console.log(pc.dim('Skipping app launch (working with foreground app)'));
+        actionHistory.push('ready');
+        await sleep(1000);
+      }
+      let steps = 0;
+
+      // Task execution loop
+      while (steps < this.config.maxSteps) {
+        steps++;
+        console.log(pc.dim(`\n${'─'.repeat(40)}`));
+        console.log(pc.bold(`Step ${steps}/${this.config.maxSteps}`));
+
+        const observeSpinner = createSpinner('Capturing screen...').start();
+        let screenshot: string;
+
+        try {
+          screenshot = await this.maestro.screenshot(steps);
+          observeSpinner.succeed('Screen captured');
+        } catch (error) {
+          observeSpinner.fail('Screenshot failed');
+          const err = error as Error;
+          console.log(pc.yellow(`  ⚠️ ${err.message}`));
+          await sleep(2000);
+          continue;
+        }
+
+        // Decide
+        const thinkSpinner = createSpinner('AI thinking...').start();
+        let decision: AgentDecision;
+
+        try {
+          decision = await this.agent.decide(screenshot, this.config.task, {
+            stepNumber: steps,
+            maxSteps: this.config.maxSteps,
+            actionHistory,
+            successCriteria: this.config.successCriteria,
+            constraints: this.config.constraints,
+          });
+          thinkSpinner.succeed('Decision made');
+        } catch (error) {
+          thinkSpinner.fail('AI decision failed');
+          const err = error as Error;
+          console.log(pc.yellow(`  ⚠️ ${err.message}`));
+          await sleep(2000);
+          continue;
+        }
+
+        console.log(pc.dim(`  💭 ${decision.reasoning}`));
+        console.log(pc.blue(`  📊 Progress: ${decision.progress}%`));
+        console.log(
+          pc.green(`  🎬 Action: ${decision.action}`) +
+            (decision.params ? pc.dim(` ${JSON.stringify(decision.params)}`) : '')
+        );
+
+        // Handle completion
+        if (decision.action === 'done') {
+          console.log(pc.green('\n✅ Task completed successfully!'));
+          return { success: true, reason: decision.reasoning, steps };
+        }
+
+        if (decision.action === 'failed') {
+          console.log(pc.red('\n❌ Task failed: ') + decision.reasoning);
+          return { success: false, reason: decision.reasoning, steps };
+        }
+
+        // Execute action
+        try {
+          await this.executeAction(decision);
+          const actionStr = this.formatAction(decision);
+          actionHistory.push(actionStr);
+        } catch (error) {
+          const err = error as Error;
+          console.log(pc.yellow(`  ⚠️ Action failed: ${err.message}`));
+          actionHistory.push('error');
+        }
+
+        await sleep(1500);
+      }
+
+      console.log(pc.yellow('\n⏱️ Max steps reached'));
+      return { success: false, reason: 'Timeout - max steps exceeded', steps };
+    } finally {
+      // Clean up WDA processes
+      if (this.maestro instanceof WDAClient) {
+        await this.maestro.stop();
+      }
+    }
   }
 
   private async executeAction(decision: AgentDecision): Promise<void> {

@@ -14,7 +14,7 @@ import {
   ensureMaestroIosDeviceInstalled,
   isMaestroIosDeviceInstalled,
 } from './utils/install-maestro.js';
-import type { TaskConfig } from './types.js';
+import type { TaskConfig, RunnerType } from './types.js';
 
 const DEFAULT_MODEL_GOOGLE = 'gemini-2.5-flash';
 const DEFAULT_MODEL_OPENAI = 'gpt-4o';
@@ -73,7 +73,7 @@ function getApiConfig(): { apiKey: string; provider: 'google' | 'openai'; defaul
 // Create CLI program
 const program = new Command();
 
-program.name('mobile-use').description('AI-powered mobile task automation using Maestro and OpenAI').version('1.0.0');
+program.name('mobile-use').description('AI-powered mobile task automation using Maestro and OpenAI').version('1.0.0').enablePositionalOptions();
 
 program
   .command('run')
@@ -84,14 +84,17 @@ program
   .option('-m, --max-steps <number>', 'Maximum steps before timeout', String(DEFAULT_MAX_STEPS))
   .option('--model <name>', 'AI model to use')
   .option('--device <id>', 'Target device ID (for Android real devices or specific emulators)')
-  .option('--ios-device <udid>', 'Physical iOS device UDID (requires maestro-ios-device)')
-  .option('--team-id <id>', 'Apple Developer Team ID (required for --ios-device)')
-  .option('--app-file <path>', 'Path to .ipa file (required for --ios-device)')
-  .option('--driver-port <port>', 'Driver host port for iOS device (default: 6001)', '6001')
+  .option('--ios-device <udid>', 'Physical iOS device UDID')
+  .option('--team-id <id>', 'Apple Developer Team ID')
+  .option('--app-file <path>', 'Path to .ipa file (optional for maestro-runner)')
+  .option('--driver-port <port>', 'Driver host port (default: 8100 for wda, 6001 for maestro)')
+  .option('--runner <type>', 'Runner backend: maestro, maestro-runner, or wda (default: maestro)')
   .option('--criteria <criteria...>', 'Success criteria (can specify multiple)')
   .option('--constraint <constraints...>', 'Constraints (can specify multiple)')
   .action(async (bundleIdArg?: string, taskArg?: string, options?: Record<string, unknown>) => {
-    if (!isMaestroInstalled()) {
+    const runner = (options?.runner as RunnerType) ?? 'maestro';
+
+    if (runner === 'maestro' && !isMaestroInstalled()) {
       console.log(pc.yellow('\n⚠️  Maestro is not installed.'));
       console.log(pc.dim('Run: mobile-use install-maestro\n'));
       process.exit(1);
@@ -125,16 +128,28 @@ program
     const teamId = options?.teamId as string | undefined;
     const appFile = options?.appFile as string | undefined;
 
-    if (iosDeviceUdid && (!teamId || !appFile)) {
-      console.error(pc.red('\n❌ Error: --ios-device requires --team-id and --app-file'));
+    // WDA runner: requires --ios-device and --team-id, no --app-file needed
+    if (runner === 'wda') {
+      if (!iosDeviceUdid || !teamId) {
+        console.error(pc.red('\n❌ Error: --runner wda requires --ios-device and --team-id'));
+        console.log(pc.dim('\nUsage:'));
+        console.log(pc.dim('  mobile-use run <bundleId> <task> --ios-device <udid> --team-id <id> --runner wda'));
+        process.exit(1);
+      }
+    } else if (iosDeviceUdid && runner === 'maestro' && (!teamId || !appFile)) {
+      console.error(pc.red('\n❌ Error: --ios-device with maestro requires --team-id and --app-file'));
       console.log(pc.dim('\nUsage:'));
       console.log(pc.dim('  mobile-use run <bundleId> <task> --ios-device <udid> --team-id <id> --app-file /path/to/app.ipa'));
-      console.log(pc.dim('\nNote: You must also start maestro-ios-device bridge in a separate terminal:'));
-      console.log(pc.dim('  maestro-ios-device --team-id <id> --device <udid>'));
+      console.log(pc.dim('\nOr use wda runner (fastest, no --app-file needed):'));
+      console.log(pc.dim('  mobile-use run <bundleId> <task> --ios-device <udid> --team-id <id> --runner wda'));
       process.exit(1);
     }
 
     const { apiKey, provider, defaultModel } = getApiConfig();
+
+    const driverPort = runner === 'wda'
+      ? parseInt(String(options?.driverPort ?? 8100), 10)
+      : parseInt(String(options?.driverPort ?? 6001), 10);
 
     const config: TaskConfig = {
       bundleId,
@@ -144,12 +159,13 @@ program
       deviceId: options?.device as string | undefined,
       successCriteria: options?.criteria as string[] | undefined,
       constraints: options?.constraint as string[] | undefined,
+      runner,
       iosDevice: iosDeviceUdid
         ? {
             udid: iosDeviceUdid,
-            teamId: teamId!,
-            appFile: appFile!,
-            driverPort: parseInt(String(options?.driverPort ?? 6001), 10),
+            teamId,
+            appFile,
+            driverPort,
           }
         : undefined,
     };
@@ -269,7 +285,8 @@ program
   .option('--ios-device <udid>', 'Physical iOS device UDID')
   .option('--team-id <id>', 'Apple Developer Team ID')
   .option('--app-file <path>', 'Path to .ipa file')
-  .option('--driver-port <port>', 'Driver host port', '6001')
+  .option('--driver-port <port>', 'Driver host port (default: 8100 for wda, 6001 for maestro)')
+  .option('--runner <type>', 'Runner backend: maestro, maestro-runner, or wda')
   .option('--criteria <criteria...>', 'Success criteria')
   .option('--constraint <constraints...>', 'Constraints')
   .action(async (bundleIdArg?: string, taskArg?: string, options?: Record<string, unknown>) => {
@@ -293,7 +310,9 @@ program
       return;
     }
 
-    if (!isMaestroInstalled()) {
+    const runner = (options?.runner as RunnerType) ?? 'maestro';
+
+    if (runner === 'maestro' && !isMaestroInstalled()) {
       console.log(pc.yellow('\n⚠️  Maestro is not installed.'));
       console.log(pc.dim('Run: mobile-use install-maestro\n'));
       process.exit(1);
@@ -303,12 +322,21 @@ program
     const teamId = options?.teamId as string | undefined;
     const appFile = options?.appFile as string | undefined;
 
-    if (iosDeviceUdid && (!teamId || !appFile)) {
-      console.error(pc.red('\n❌ Error: --ios-device requires --team-id and --app-file'));
+    if (runner === 'wda' && (!iosDeviceUdid || !teamId)) {
+      console.error(pc.red('\n❌ Error: --runner wda requires --ios-device and --team-id'));
+      console.log(pc.dim('Usage: mobile-use <bundleId> <task> --ios-device <udid> --team-id <id> --runner wda'));
+      process.exit(1);
+    } else if (iosDeviceUdid && runner === 'maestro' && (!teamId || !appFile)) {
+      console.error(pc.red('\n❌ Error: --ios-device with maestro requires --team-id and --app-file'));
+      console.log(pc.dim('Or use: --runner wda (fastest, no --app-file needed)'));
       process.exit(1);
     }
 
     const { apiKey, provider, defaultModel } = getApiConfig();
+
+    const driverPort = runner === 'wda'
+      ? parseInt(String(options?.driverPort ?? 8100), 10)
+      : parseInt(String(options?.driverPort ?? 6001), 10);
 
     const config: TaskConfig = {
       bundleId,
@@ -318,12 +346,13 @@ program
       deviceId: options?.device as string | undefined,
       successCriteria: options?.criteria as string[] | undefined,
       constraints: options?.constraint as string[] | undefined,
+      runner,
       iosDevice: iosDeviceUdid
         ? {
             udid: iosDeviceUdid,
-            teamId: teamId!,
-            appFile: appFile!,
-            driverPort: parseInt(String(options?.driverPort ?? 6001), 10),
+            teamId,
+            appFile,
+            driverPort,
           }
         : undefined,
     };

@@ -12,10 +12,12 @@ import {
 import * as os from 'os';
 import * as path from 'path';
 
+import type { RunnerType } from './types.js';
+
 export interface IosDeviceConfig {
   udid: string;
-  teamId: string;
-  appFile: string;
+  teamId?: string;
+  appFile?: string;
   driverPort?: number;
 }
 
@@ -26,6 +28,7 @@ export interface MaestroConfig {
   evalScreensDir?: string;
   deviceId?: string;
   iosDevice?: IosDeviceConfig;
+  runner?: RunnerType;
 }
 
 export class MaestroClient {
@@ -35,6 +38,7 @@ export class MaestroClient {
   private evalScreensDir: string;
   private deviceId?: string;
   private iosDevice?: IosDeviceConfig;
+  private runner: RunnerType;
 
   constructor(config: MaestroConfig) {
     this.bundleId = config.bundleId;
@@ -43,6 +47,7 @@ export class MaestroClient {
     this.evalScreensDir = config.evalScreensDir ?? './eval-screens';
     this.deviceId = config.deviceId;
     this.iosDevice = config.iosDevice;
+    this.runner = config.runner ?? 'maestro';
   }
 
   private buildYamlHeader(): string {
@@ -50,13 +55,41 @@ export class MaestroClient {
   }
 
   private buildMaestroCommand(flowPath: string): string {
+    if (this.runner === 'maestro-runner') {
+      return this.buildMaestroRunnerCommand(flowPath);
+    }
+
     let cmd = 'maestro';
 
     if (this.iosDevice) {
       const port = this.iosDevice.driverPort ?? 6001;
       cmd += ` --driver-host-port ${port}`;
       cmd += ` --device ${this.iosDevice.udid}`;
-      cmd += ` --app-file ${this.iosDevice.appFile}`;
+      if (this.iosDevice.appFile) {
+        cmd += ` --app-file ${this.iosDevice.appFile}`;
+      }
+    } else if (this.deviceId) {
+      cmd += ` --device ${this.deviceId}`;
+    }
+
+    cmd += ` test ${flowPath}`;
+    return cmd;
+  }
+
+  private buildMaestroRunnerCommand(flowPath: string): string {
+    // maestro-runner may be installed at ~/.maestro-runner/bin/
+    const homeBin = path.join(os.homedir(), '.maestro-runner', 'bin', 'maestro-runner');
+    let cmd = existsSync(homeBin) ? homeBin : 'maestro-runner';
+
+    if (this.iosDevice) {
+      cmd += ` --platform ios`;
+      cmd += ` --device ${this.iosDevice.udid}`;
+      if (this.iosDevice.teamId) {
+        cmd += ` --team-id ${this.iosDevice.teamId}`;
+      }
+      if (this.iosDevice.appFile) {
+        cmd += ` --app-file ${this.iosDevice.appFile}`;
+      }
     } else if (this.deviceId) {
       cmd += ` --device ${this.deviceId}`;
     }
@@ -85,7 +118,13 @@ export class MaestroClient {
         timeout: this.timeout,
       });
     } catch (error: unknown) {
-      const execError = error as { stdout?: string; stderr?: string; message?: string };
+      const execError = error as { stdout?: string; stderr?: string; message?: string; status?: number };
+
+      // maestro-runner may exit non-zero even on success (stderr has cleanup messages)
+      if (this.runner === 'maestro-runner' && execError.stdout?.includes('PASS')) {
+        return; // Flow actually passed
+      }
+
       const output = execError.stdout || execError.stderr || execError.message || 'Unknown error';
       throw new Error(`Maestro command failed: ${output.slice(0, 200)}`);
     } finally {
@@ -258,17 +297,22 @@ export class MaestroClient {
       const flowPath = path.join(tempDir, 'flow.yaml');
       writeFileSync(flowPath, yaml);
 
-      const cmd = this.buildMaestroCommand(flowPath);
+      const cmd = this.runner === 'maestro-runner'
+        ? this.buildMaestroRunnerCommand(flowPath) + ` --output ${tempDir}/reports --flatten`
+        : this.buildMaestroCommand(flowPath);
+
       execSync(cmd, {
         encoding: 'utf-8',
         stdio: 'pipe',
-        timeout: 120000, // Increased to 120 seconds for iOS Simulator
+        timeout: 120000,
         cwd: tempDir,
       });
 
-      const screenshotPath = path.join(tempDir, `${name}.png`);
+      // Find screenshot: maestro saves in cwd, maestro-runner saves in reports/assets/
+      let screenshotPath = path.join(tempDir, `${name}.png`);
       if (!existsSync(screenshotPath)) {
-        throw new Error(`Screenshot not found at ${screenshotPath}`);
+        // maestro-runner stores screenshots in reports/assets/flow-NNN/
+        screenshotPath = this.findScreenshotInReports(tempDir, name);
       }
 
       const buffer = readFileSync(screenshotPath);
@@ -284,15 +328,51 @@ export class MaestroClient {
       const err = error as { message?: string };
       throw new Error(`Screenshot failed: ${(err.message || 'Unknown error').slice(0, 300)}`);
     } finally {
-      try {
-        const files = existsSync(tempDir) ? readdirSync(tempDir) : [];
-        for (const file of files) {
-          unlinkSync(path.join(tempDir, file));
-        }
-        rmdirSync(tempDir);
-      } catch {
-        // Ignore cleanup errors
+      this.cleanupDir(tempDir);
+    }
+  }
+
+  private findScreenshotInReports(baseDir: string, name: string): string {
+    const reportsDir = path.join(baseDir, 'reports');
+    if (existsSync(reportsDir)) {
+      const pngs = this.findFiles(reportsDir, '.png');
+      const match = pngs.find((f) => f.includes(name));
+      if (match) return match;
+      const assetPng = pngs.find((f) => f.includes('assets'));
+      if (assetPng) return assetPng;
+      if (pngs.length > 0) return pngs[0]!;
+    }
+    throw new Error(`Screenshot not found in ${baseDir}`);
+  }
+
+  private findFiles(dir: string, ext: string): string[] {
+    const results: string[] = [];
+    if (!existsSync(dir)) return results;
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const fullPath = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        results.push(...this.findFiles(fullPath, ext));
+      } else if (entry.name.endsWith(ext)) {
+        results.push(fullPath);
       }
+    }
+    return results;
+  }
+
+  private cleanupDir(dir: string): void {
+    try {
+      if (!existsSync(dir)) return;
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const fullPath = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+          this.cleanupDir(fullPath);
+        } else {
+          unlinkSync(fullPath);
+        }
+      }
+      rmdirSync(dir);
+    } catch {
+      // Ignore cleanup errors
     }
   }
 

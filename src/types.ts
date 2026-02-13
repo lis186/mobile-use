@@ -2,6 +2,8 @@
  * Type definitions for mobile-use
  */
 
+export type RunnerType = 'maestro' | 'maestro-runner' | 'wda';
+
 export interface TaskConfig {
   bundleId?: string;
   task: string;
@@ -11,12 +13,13 @@ export interface TaskConfig {
   constraints?: string[];
   deviceId?: string;
   iosDevice?: IosDeviceConfig;
+  runner?: RunnerType;
 }
 
 export interface IosDeviceConfig {
   udid: string;
-  teamId: string;
-  appFile: string;
+  teamId?: string;
+  appFile?: string;
   driverPort?: number;
 }
 

@@ -1,0 +1,459 @@
+/**
+ * WDAClient - Direct HTTP client for WebDriverAgent on real iOS devices.
+ *
+ * Instead of going through Maestro CLI (which restarts WDA per action),
+ * this keeps WDA running as a persistent HTTP server and sends
+ * W3C WebDriver commands directly — ~24-143x faster per action.
+ */
+
+import { spawn, execFileSync, type ChildProcess } from 'child_process';
+import { writeFileSync, mkdirSync } from 'fs';
+import * as path from 'path';
+
+export interface WDAConfig {
+  udid: string;
+  teamId: string;
+  bundleId?: string;
+  wdaProjectPath?: string;
+  port?: number;
+  saveEvalScreens?: boolean;
+  evalScreensDir?: string;
+}
+
+export class WDAClient {
+  private udid: string;
+  private teamId: string;
+  private bundleId?: string;
+  private wdaProjectPath: string;
+  private port: number;
+  private saveEvalScreens: boolean;
+  private evalScreensDir: string;
+
+  private baseUrl: string;
+  private sessionId: string | null = null;
+  private screenWidth = 0;
+  private screenHeight = 0;
+  private xcodebuildProc: ChildProcess | null = null;
+  private iproxyProc: ChildProcess | null = null;
+  private exitHandler: (() => void) | null = null;
+
+  constructor(config: WDAConfig) {
+    this.udid = config.udid;
+    this.teamId = config.teamId;
+    this.bundleId = config.bundleId;
+    this.wdaProjectPath = config.wdaProjectPath ?? '/tmp/WebDriverAgent';
+    this.port = config.port ?? 8100;
+    this.saveEvalScreens = config.saveEvalScreens ?? false;
+    this.evalScreensDir = config.evalScreensDir ?? './eval-screens';
+    this.baseUrl = `http://localhost:${this.port}`;
+  }
+
+  // ── Lifecycle ──────────────────────────────────────────────
+
+  async start(): Promise<void> {
+    this.killLeftovers();
+
+    console.log(`[WDA] Starting xcodebuild + iproxy on port ${this.port}...`);
+
+    // Start iproxy: forward localhost:port → device:8100
+    this.iproxyProc = spawn('iproxy', [String(this.port), '8100', '-u', this.udid], {
+      stdio: 'ignore',
+      detached: false,
+    });
+    this.iproxyProc.unref();
+
+    // Start xcodebuild test-without-building
+    this.xcodebuildProc = spawn(
+      'xcodebuild',
+      [
+        'test-without-building',
+        '-project',
+        path.join(this.wdaProjectPath, 'WebDriverAgent.xcodeproj'),
+        '-scheme',
+        'WebDriverAgentRunner',
+        '-destination',
+        `id=${this.udid}`,
+        `DEVELOPMENT_TEAM=${this.teamId}`,
+        'USE_PORT=8100',
+      ],
+      { stdio: 'ignore', detached: false }
+    );
+    this.xcodebuildProc.unref();
+
+    // Poll /status until WDA is ready
+    await this.pollReady(60_000);
+
+    // Create session
+    await this.createSession();
+
+    // Get screen size for coordinate conversion
+    await this.fetchScreenSize();
+
+    // Register synchronous cleanup for process.exit() / Ctrl-C
+    this.exitHandler = () => this.syncCleanup();
+    process.on('exit', this.exitHandler);
+
+    console.log(`[WDA] Ready — session=${this.sessionId}, screen=${this.screenWidth}x${this.screenHeight}`);
+  }
+
+  async stop(): Promise<void> {
+    console.log('[WDA] Stopping...');
+    // Unregister exit handler (we're cleaning up properly now)
+    if (this.exitHandler) {
+      process.removeListener('exit', this.exitHandler);
+      this.exitHandler = null;
+    }
+    if (this.sessionId) {
+      try {
+        await this.wdaFetch(`/session/${this.sessionId}`, { method: 'DELETE' });
+      } catch {
+        // Best-effort session cleanup
+      }
+      this.sessionId = null;
+    }
+    this.syncCleanup();
+    console.log('[WDA] Stopped');
+  }
+
+  /** Synchronous cleanup — safe to call from process 'exit' handler */
+  private syncCleanup(): void {
+    this.killProc(this.xcodebuildProc);
+    this.killProc(this.iproxyProc);
+    this.xcodebuildProc = null;
+    this.iproxyProc = null;
+    this.killLeftovers();
+  }
+
+  private killProc(proc: ChildProcess | null): void {
+    if (!proc || proc.killed) return;
+    try {
+      proc.kill('SIGTERM');
+    } catch {
+      // ignore
+    }
+  }
+
+  private killLeftovers(): void {
+    // Use pkill with execFileSync (no shell injection risk — all args are hardcoded)
+    try {
+      execFileSync('pkill', ['-f', 'xcodebuild.*WebDriverAgent'], { stdio: 'ignore' });
+    } catch {
+      // pkill exits non-zero when no processes matched — that's fine
+    }
+    try {
+      execFileSync('pkill', ['-f', `iproxy.*${this.port}`], { stdio: 'ignore' });
+    } catch {
+      // same
+    }
+  }
+
+  private async pollReady(timeoutMs: number): Promise<void> {
+    const start = Date.now();
+    while (Date.now() - start < timeoutMs) {
+      try {
+        const resp = await fetch(`${this.baseUrl}/status`);
+        if (resp.ok) {
+          const data = (await resp.json()) as { value?: { ready?: boolean } };
+          if (data.value?.ready) return;
+        }
+      } catch {
+        // Not ready yet
+      }
+      await sleep(1000);
+    }
+    throw new Error(`[WDA] Timeout: WDA not ready after ${timeoutMs / 1000}s`);
+  }
+
+  private async createSession(): Promise<void> {
+    const resp = await this.wdaFetch('/session', {
+      method: 'POST',
+      body: JSON.stringify({ capabilities: {} }),
+    });
+    const data = (await resp.json()) as { value?: { sessionId?: string }; sessionId?: string };
+    this.sessionId = data.value?.sessionId ?? data.sessionId ?? null;
+    if (!this.sessionId) {
+      throw new Error('[WDA] Failed to create session');
+    }
+  }
+
+  private async fetchScreenSize(): Promise<void> {
+    const resp = await this.sessionFetch('/window/size');
+    const data = (await resp.json()) as { value?: { width?: number; height?: number } };
+    this.screenWidth = data.value?.width ?? 390;
+    this.screenHeight = data.value?.height ?? 844;
+  }
+
+  // ── HTTP Helpers ───────────────────────────────────────────
+
+  private async wdaFetch(urlPath: string, init?: RequestInit): Promise<Response> {
+    return fetch(`${this.baseUrl}${urlPath}`, {
+      ...init,
+      headers: { 'Content-Type': 'application/json', ...init?.headers },
+    });
+  }
+
+  private async sessionFetch(subpath: string, init?: RequestInit): Promise<Response> {
+    if (!this.sessionId) throw new Error('[WDA] No active session');
+    return this.wdaFetch(`/session/${this.sessionId}${subpath}`, init);
+  }
+
+  // ── Coordinate Conversion ─────────────────────────────────
+
+  private pctToPixelX(pct: number): number {
+    return Math.round(this.screenWidth * (pct / 100));
+  }
+
+  private pctToPixelY(pct: number): number {
+    return Math.round(this.screenHeight * (pct / 100));
+  }
+
+  // ── W3C Actions Builder ───────────────────────────────────
+
+  private async performActions(actions: unknown[]): Promise<void> {
+    const resp = await this.sessionFetch('/actions', {
+      method: 'POST',
+      body: JSON.stringify({ actions }),
+    });
+    if (!resp.ok) {
+      const text = await resp.text();
+      throw new Error(`[WDA] Actions failed: ${text.slice(0, 200)}`);
+    }
+  }
+
+  private pointerAction(steps: unknown[]): unknown {
+    return {
+      type: 'pointer',
+      id: 'finger1',
+      parameters: { pointerType: 'touch' },
+      actions: steps,
+    };
+  }
+
+  // ── Public Methods (same interface as MaestroClient) ──────
+
+  hasBundleId(): boolean {
+    return !!this.bundleId;
+  }
+
+  async launch(): Promise<void> {
+    if (!this.bundleId) return;
+    await this.launchApp(this.bundleId);
+  }
+
+  async launchApp(appId: string): Promise<void> {
+    await this.sessionFetch('/wda/apps/launch', {
+      method: 'POST',
+      body: JSON.stringify({ bundleId: appId }),
+    });
+  }
+
+  async stopApp(appId: string): Promise<void> {
+    await this.sessionFetch('/wda/apps/terminate', {
+      method: 'POST',
+      body: JSON.stringify({ bundleId: appId }),
+    });
+  }
+
+  async tap(x: number, y: number): Promise<void> {
+    const px = this.pctToPixelX(x);
+    const py = this.pctToPixelY(y);
+    await this.performActions([
+      this.pointerAction([
+        { type: 'pointerMove', duration: 0, x: px, y: py },
+        { type: 'pointerDown', button: 0 },
+        { type: 'pause', duration: 50 },
+        { type: 'pointerUp', button: 0 },
+      ]),
+    ]);
+  }
+
+  async tapText(text: string): Promise<void> {
+    const elementId = await this.findElementByText(text);
+    if (elementId) {
+      await this.sessionFetch(`/element/${elementId}/click`, { method: 'POST', body: '{}' });
+    } else {
+      throw new Error(`[WDA] Element with text "${text}" not found`);
+    }
+  }
+
+  async doubleTap(x: number, y: number): Promise<void> {
+    const px = this.pctToPixelX(x);
+    const py = this.pctToPixelY(y);
+    await this.performActions([
+      this.pointerAction([
+        { type: 'pointerMove', duration: 0, x: px, y: py },
+        { type: 'pointerDown', button: 0 },
+        { type: 'pointerUp', button: 0 },
+        { type: 'pause', duration: 50 },
+        { type: 'pointerDown', button: 0 },
+        { type: 'pointerUp', button: 0 },
+      ]),
+    ]);
+  }
+
+  async longPress(x: number, y: number): Promise<void> {
+    const px = this.pctToPixelX(x);
+    const py = this.pctToPixelY(y);
+    await this.performActions([
+      this.pointerAction([
+        { type: 'pointerMove', duration: 0, x: px, y: py },
+        { type: 'pointerDown', button: 0 },
+        { type: 'pause', duration: 1000 },
+        { type: 'pointerUp', button: 0 },
+      ]),
+    ]);
+  }
+
+  async longPressText(text: string): Promise<void> {
+    const elementId = await this.findElementByText(text);
+    if (!elementId) throw new Error(`[WDA] Element with text "${text}" not found`);
+
+    const resp = await this.sessionFetch(`/element/${elementId}/rect`);
+    const data = (await resp.json()) as { value?: { x?: number; y?: number; width?: number; height?: number } };
+    const rect = data.value;
+    if (!rect) throw new Error('[WDA] Could not get element rect');
+
+    const cx = Math.round((rect.x ?? 0) + (rect.width ?? 0) / 2);
+    const cy = Math.round((rect.y ?? 0) + (rect.height ?? 0) / 2);
+
+    await this.performActions([
+      this.pointerAction([
+        { type: 'pointerMove', duration: 0, x: cx, y: cy },
+        { type: 'pointerDown', button: 0 },
+        { type: 'pause', duration: 1000 },
+        { type: 'pointerUp', button: 0 },
+      ]),
+    ]);
+  }
+
+  async inputText(text: string): Promise<void> {
+    await this.sessionFetch('/wda/keys', {
+      method: 'POST',
+      body: JSON.stringify({ value: [...text] }),
+    });
+  }
+
+  async eraseText(chars: number = 50): Promise<void> {
+    const deleteKeys = Array.from({ length: chars }, () => '\uE003');
+    await this.sessionFetch('/wda/keys', {
+      method: 'POST',
+      body: JSON.stringify({ value: deleteKeys }),
+    });
+  }
+
+  async scroll(): Promise<void> {
+    await this.swipe(50, 70, 50, 30);
+  }
+
+  async swipe(startX: number, startY: number, endX: number, endY: number): Promise<void> {
+    const sx = this.pctToPixelX(startX);
+    const sy = this.pctToPixelY(startY);
+    const ex = this.pctToPixelX(endX);
+    const ey = this.pctToPixelY(endY);
+
+    await this.performActions([
+      this.pointerAction([
+        { type: 'pointerMove', duration: 0, x: sx, y: sy },
+        { type: 'pointerDown', button: 0 },
+        { type: 'pointerMove', duration: 300, x: ex, y: ey },
+        { type: 'pointerUp', button: 0 },
+      ]),
+    ]);
+  }
+
+  async back(): Promise<void> {
+    await this.iosBackGesture();
+  }
+
+  async iosBackGesture(): Promise<void> {
+    await this.swipe(1, 50, 80, 50);
+  }
+
+  async hideKeyboard(): Promise<void> {
+    try {
+      await this.sessionFetch('/wda/keyboard/dismiss', { method: 'POST', body: '{}' });
+    } catch {
+      await this.tap(50, 10);
+    }
+  }
+
+  async openLink(url: string): Promise<void> {
+    await this.sessionFetch('/url', {
+      method: 'POST',
+      body: JSON.stringify({ url }),
+    });
+  }
+
+  async pressKey(key: string): Promise<void> {
+    const keyMap: Record<string, string> = {
+      enter: '\uE007',
+      return: '\uE007',
+      delete: '\uE003',
+      backspace: '\uE003',
+      tab: '\uE004',
+      escape: '\uE00C',
+      space: ' ',
+      home: '\uE011',
+    };
+    const value = keyMap[key.toLowerCase()] ?? key;
+    await this.sessionFetch('/wda/keys', {
+      method: 'POST',
+      body: JSON.stringify({ value: [value] }),
+    });
+  }
+
+  async waitForAnimation(timeout: number = 3000): Promise<void> {
+    await sleep(timeout);
+  }
+
+  async screenshot(stepNumber?: number): Promise<string> {
+    if (!this.sessionId) throw new Error('[WDA] No active session');
+
+    const resp = await this.sessionFetch('/screenshot');
+    const data = (await resp.json()) as { value?: string };
+    const base64 = data.value;
+    if (!base64) throw new Error('[WDA] Screenshot returned no data');
+
+    if (this.saveEvalScreens && stepNumber !== undefined) {
+      mkdirSync(this.evalScreensDir, { recursive: true });
+      const evalPath = path.join(
+        this.evalScreensDir,
+        `step-${String(stepNumber).padStart(3, '0')}-before.png`
+      );
+      writeFileSync(evalPath, Buffer.from(base64, 'base64'));
+    }
+
+    return base64;
+  }
+
+  // ── Element Finding ───────────────────────────────────────
+
+  private async findElementByText(text: string): Promise<string | null> {
+    const strategies = [
+      { using: '-ios predicate string', value: `label CONTAINS[c] '${text.replace(/'/g, "\\'")}'` },
+      { using: 'link text', value: text },
+      { using: 'name', value: text },
+    ];
+
+    for (const strategy of strategies) {
+      try {
+        const resp = await this.sessionFetch('/element', {
+          method: 'POST',
+          body: JSON.stringify(strategy),
+        });
+        if (!resp.ok) continue;
+        const data = (await resp.json()) as { value?: { ELEMENT?: string } };
+        const eid = data.value?.ELEMENT;
+        if (eid) return eid;
+      } catch {
+        continue;
+      }
+    }
+
+    return null;
+  }
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
