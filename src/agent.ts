@@ -1,15 +1,33 @@
 import { createOpenAI } from '@ai-sdk/openai';
-import { generateText, type ModelMessage } from 'ai';
+import { createGoogleGenerativeAI } from '@ai-sdk/google';
+import { generateText, type ModelMessage, type LanguageModel } from 'ai';
 import type { AgentDecision, AgentContext } from './types.js';
 
+type AIProvider = 'google' | 'openai';
+
 export class TaskAgent {
-  private openai: ReturnType<typeof createOpenAI>;
+  private provider: AIProvider;
+  private openai?: ReturnType<typeof createOpenAI>;
+  private google?: ReturnType<typeof createGoogleGenerativeAI>;
   private conversationHistory: ModelMessage[] = [];
   private model: string;
 
-  constructor(apiKey: string, model: string = 'gpt-4o') {
-    this.openai = createOpenAI({ apiKey });
+  constructor(apiKey: string, model: string = 'gemini-2.5-flash', provider: AIProvider = 'google') {
+    this.provider = provider;
     this.model = model;
+
+    if (provider === 'google') {
+      this.google = createGoogleGenerativeAI({ apiKey });
+    } else {
+      this.openai = createOpenAI({ apiKey });
+    }
+  }
+
+  private getModel(): LanguageModel {
+    if (this.provider === 'google' && this.google) {
+      return this.google(this.model);
+    }
+    return this.openai!(this.model);
   }
 
   async decide(
@@ -41,10 +59,8 @@ export class TaskAgent {
 
     this.conversationHistory.push(userMessage);
 
-    const model = this.openai(this.model);
-
     const response = await generateText({
-      model,
+      model: this.getModel(),
       system: systemPrompt,
       messages: this.conversationHistory,
     });

@@ -16,7 +16,8 @@ import {
 } from './utils/install-maestro.js';
 import type { TaskConfig } from './types.js';
 
-const DEFAULT_MODEL = 'gpt-4o';
+const DEFAULT_MODEL_GOOGLE = 'gemini-2.5-flash';
+const DEFAULT_MODEL_OPENAI = 'gpt-4o';
 const DEFAULT_MAX_STEPS = 100;
 
 // Handle graceful shutdown
@@ -49,16 +50,24 @@ function createSpinner(text: string): Ora {
   });
 }
 
-function getApiKey(): string {
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) {
-    console.error(pc.red('\n❌ Error: API key not found'));
-    console.log(pc.dim('\nSet the environment variable:'));
-    console.log(pc.dim('  OPENAI_API_KEY=your_key'));
-    console.log(pc.dim('\nGet your API key from: https://platform.openai.com/api-keys\n'));
-    process.exit(1);
+function getApiConfig(): { apiKey: string; provider: 'google' | 'openai'; defaultModel: string } {
+  const googleKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY;
+  const openaiKey = process.env.OPENAI_API_KEY;
+
+  if (googleKey) {
+    return { apiKey: googleKey, provider: 'google', defaultModel: DEFAULT_MODEL_GOOGLE };
   }
-  return apiKey;
+  if (openaiKey) {
+    return { apiKey: openaiKey, provider: 'openai', defaultModel: DEFAULT_MODEL_OPENAI };
+  }
+
+  console.error(pc.red('\n❌ Error: API key not found'));
+  console.log(pc.dim('\nSet one of the environment variables:'));
+  console.log(pc.dim('  GOOGLE_GENERATIVE_AI_API_KEY=your_key  (recommended, free tier available)'));
+  console.log(pc.dim('  OPENAI_API_KEY=your_key'));
+  console.log(pc.dim('\nGet your Google AI key from: https://aistudio.google.com/apikey'));
+  console.log(pc.dim('Get your OpenAI key from: https://platform.openai.com/api-keys\n'));
+  process.exit(1);
 }
 
 // Create CLI program
@@ -73,7 +82,7 @@ program
   .argument('[task]', 'Task to execute in natural language')
   .option('-t, --task <task>', 'Task to execute (use when running without bundleId)')
   .option('-m, --max-steps <number>', 'Maximum steps before timeout', String(DEFAULT_MAX_STEPS))
-  .option('--model <name>', 'OpenAI model to use', DEFAULT_MODEL)
+  .option('--model <name>', 'AI model to use')
   .option('--device <id>', 'Target device ID (for Android real devices or specific emulators)')
   .option('--ios-device <udid>', 'Physical iOS device UDID (requires maestro-ios-device)')
   .option('--team-id <id>', 'Apple Developer Team ID (required for --ios-device)')
@@ -125,13 +134,13 @@ program
       process.exit(1);
     }
 
-    const apiKey = getApiKey();
+    const { apiKey, provider, defaultModel } = getApiConfig();
 
     const config: TaskConfig = {
       bundleId,
       task,
       maxSteps: parseInt(String(options?.maxSteps ?? DEFAULT_MAX_STEPS), 10),
-      model: String(options?.model ?? DEFAULT_MODEL),
+      model: String(options?.model ?? defaultModel),
       deviceId: options?.device as string | undefined,
       successCriteria: options?.criteria as string[] | undefined,
       constraints: options?.constraint as string[] | undefined,
@@ -145,7 +154,7 @@ program
         : undefined,
     };
 
-    const executor = new TaskExecutor(config, apiKey);
+    const executor = new TaskExecutor(config, apiKey, provider);
     const result = await executor.execute();
 
     console.log('\n' + '═'.repeat(50));
@@ -203,12 +212,15 @@ program
     }
 
     const apiSpinner = createSpinner('Checking API key...').start();
-    const apiKey = process.env.OPENAI_API_KEY;
-    if (apiKey) {
+    const googleKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY;
+    const openaiKey = process.env.OPENAI_API_KEY;
+    if (googleKey) {
+      apiSpinner.succeed('Google AI API key configured (Gemini)');
+    } else if (openaiKey) {
       apiSpinner.succeed('OpenAI API key configured');
     } else {
-      apiSpinner.fail('OpenAI API key not set');
-      console.log(pc.dim('  Set OPENAI_API_KEY environment variable'));
+      apiSpinner.fail('No API key set');
+      console.log(pc.dim('  Set GOOGLE_GENERATIVE_AI_API_KEY (recommended) or OPENAI_API_KEY'));
       allGood = false;
     }
 
@@ -252,7 +264,7 @@ program
   .argument('[task]', 'Task to execute')
   .option('-t, --task <task>', 'Task to execute (use when running without bundleId)')
   .option('-m, --max-steps <number>', 'Maximum steps', String(DEFAULT_MAX_STEPS))
-  .option('--model <name>', 'OpenAI model', DEFAULT_MODEL)
+  .option('--model <name>', 'AI model to use')
   .option('--device <id>', 'Target device ID')
   .option('--ios-device <udid>', 'Physical iOS device UDID')
   .option('--team-id <id>', 'Apple Developer Team ID')
@@ -296,13 +308,13 @@ program
       process.exit(1);
     }
 
-    const apiKey = getApiKey();
+    const { apiKey, provider, defaultModel } = getApiConfig();
 
     const config: TaskConfig = {
       bundleId,
       task,
       maxSteps: parseInt(String(options?.maxSteps ?? DEFAULT_MAX_STEPS), 10),
-      model: String(options?.model ?? DEFAULT_MODEL),
+      model: String(options?.model ?? defaultModel),
       deviceId: options?.device as string | undefined,
       successCriteria: options?.criteria as string[] | undefined,
       constraints: options?.constraint as string[] | undefined,
@@ -316,7 +328,7 @@ program
         : undefined,
     };
 
-    const executor = new TaskExecutor(config, apiKey);
+    const executor = new TaskExecutor(config, apiKey, provider);
     const result = await executor.execute();
 
     console.log('\n' + '═'.repeat(50));

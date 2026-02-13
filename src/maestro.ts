@@ -38,7 +38,7 @@ export class MaestroClient {
 
   constructor(config: MaestroConfig) {
     this.bundleId = config.bundleId;
-    this.timeout = config.timeout ?? 30000;
+    this.timeout = config.timeout ?? 120000; // Increased to 120 seconds for iOS Simulator
     this.saveEvalScreens = config.saveEvalScreens ?? false;
     this.evalScreensDir = config.evalScreensDir ?? './eval-screens';
     this.deviceId = config.deviceId;
@@ -262,7 +262,7 @@ export class MaestroClient {
       execSync(cmd, {
         encoding: 'utf-8',
         stdio: 'pipe',
-        timeout: 15000,
+        timeout: 120000, // Increased to 120 seconds for iOS Simulator
         cwd: tempDir,
       });
 

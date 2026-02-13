@@ -26,14 +26,14 @@ export class TaskExecutor {
   private agent: TaskAgent;
   private config: TaskConfig;
 
-  constructor(config: TaskConfig, apiKey: string) {
+  constructor(config: TaskConfig, apiKey: string, provider: 'google' | 'openai' = 'google') {
     this.config = config;
     this.maestro = new MaestroClient({
       bundleId: config.bundleId,
       deviceId: config.deviceId,
       iosDevice: config.iosDevice,
     });
-    this.agent = new TaskAgent(apiKey, config.model);
+    this.agent = new TaskAgent(apiKey, config.model, provider);
   }
 
   async execute(): Promise<ExecutionResult> {
