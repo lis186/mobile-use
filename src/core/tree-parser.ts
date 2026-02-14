@@ -1,5 +1,5 @@
 /**
- * Accessibility tree parsers — convert raw WDA XML / Maestro JSON
+ * Accessibility tree parsers — convert raw WDA XML / Maestro JSON / XCTest JSON
  * into concise text for LLM consumption.
  */
 
@@ -11,6 +11,10 @@ export function parseAccessibilityTree(raw: string): string {
   }
   try {
     const json = JSON.parse(raw) as Record<string, unknown>;
+    // XCTest driver returns { axElement: { elementType: number, ... } }
+    if (json.axElement) {
+      return parseXCTestTree(json.axElement as XCTestElement);
+    }
     return parseMaestroTree(json);
   } catch {
     return '';
@@ -106,6 +110,92 @@ function walkMaestroNode(node: Record<string, unknown>, lines: string[]): void {
   if (children) {
     for (const child of children) {
       walkMaestroNode(child, lines);
+    }
+  }
+}
+
+// ── XCTest Tree Parser ─────────────────────────────────────────
+
+/** XCTest elementType numeric enum → human-readable name */
+const XCTEST_ELEMENT_TYPES: Record<number, string> = {
+  9: 'Button', 24: 'Toolbar', 36: 'Cell', 38: 'Table',
+  40: 'Toggle', 42: 'Link', 46: 'Image', 47: 'Icon',
+  48: 'Text', 49: 'TextField', 50: 'SecureTextField',
+  51: 'DatePicker', 52: 'TextView', 53: 'Menu', 54: 'MenuItem',
+  55: 'Picker', 56: 'PickerWheel', 57: 'NavBar',
+  58: 'TabBar', 72: 'Slider', 73: 'Stepper', 74: 'Switch',
+};
+
+/** Skip container-only types that don't carry useful info */
+const XCTEST_SKIP_TYPES = new Set([0, 1, 2, 3, 4, 5]);
+
+interface XCTestElement {
+  elementType?: number;
+  label?: string;
+  title?: string;
+  value?: string;
+  enabled?: boolean;
+  frame?: { X: number; Y: number; Width: number; Height: number };
+  children?: XCTestElement[];
+}
+
+export function parseXCTestTree(root: XCTestElement): string {
+  // Find screen dimensions from the Application element (type 2)
+  let screenW = 402, screenH = 874;
+  if (root.elementType === 2 && root.frame) {
+    screenW = root.frame.Width || screenW;
+    screenH = root.frame.Height || screenH;
+  } else if (root.children) {
+    for (const child of root.children) {
+      if (child.elementType === 2 && child.frame) {
+        screenW = child.frame.Width || screenW;
+        screenH = child.frame.Height || screenH;
+        break;
+      }
+    }
+  }
+
+  const lines: string[] = [];
+  walkXCTestNode(root, lines, screenW, screenH);
+
+  let result = '';
+  for (const line of lines) {
+    if (result.length + line.length + 1 > MAX_CHARS) break;
+    result += line + '\n';
+  }
+  return result.trimEnd();
+}
+
+function walkXCTestNode(
+  node: XCTestElement, lines: string[],
+  screenW: number, screenH: number,
+): void {
+  const et = node.elementType ?? -1;
+  const label = node.label || node.title || (typeof node.value === 'string' ? node.value : '') || '';
+
+  if (label && !XCTEST_SKIP_TYPES.has(et)) {
+    const typeName = XCTEST_ELEMENT_TYPES[et] || `Type${et}`;
+    const f = node.frame;
+
+    if (f && f.Width > 0 && f.Height > 0) {
+      // Skip off-screen elements
+      if (f.X + f.Width < 0 || f.Y + f.Height < 0 || f.X > screenW || f.Y > screenH) {
+        // still recurse children
+      } else {
+        const pctX = Math.round((f.X / screenW) * 100);
+        const pctY = Math.round((f.Y / screenH) * 100);
+        const pctX2 = Math.round(((f.X + f.Width) / screenW) * 100);
+        const pctY2 = Math.round(((f.Y + f.Height) / screenH) * 100);
+        lines.push(`[${typeName}] "${label}" (${pctX},${pctY} - ${pctX2},${pctY2})`);
+      }
+    } else {
+      lines.push(`[${typeName}] "${label}"`);
+    }
+  }
+
+  if (node.children) {
+    for (const child of node.children) {
+      walkXCTestNode(child, lines, screenW, screenH);
     }
   }
 }
