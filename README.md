@@ -171,10 +171,14 @@ mobile-use com.example.app "Create a note" \
 |--------|-------------|---------|
 | `-t, --task <task>` | Task to execute (when bundleId is omitted) | - |
 | `-m, --max-steps <n>` | Maximum steps before timeout | `100` |
+| `--model <name>` | AI model to use | `gemini-2.5-flash` |
+| `--language <lang>` | Device UI language (e.g., `"Traditional Chinese (繁體中文)"`) | - |
+| `--runner <type>` | Runner backend: `maestro`, `maestro-runner`, or `wda` | `maestro` |
 | `--device <id>` | Android device ID | - |
 | `--ios-device <udid>` | Physical iOS device UDID | - |
 | `--team-id <id>` | Apple Developer Team ID | - |
 | `--app-file <path>` | Path to .ipa file | - |
+| `--driver-port <port>` | Driver host port | `8100` (wda) / `6001` (maestro) |
 
 ## Available Actions
 
@@ -282,6 +286,44 @@ mobile-use com.myapp.test "Complete the signup flow" \
   --criteria "User profile shows correct email" \
   --constraint "Use email: test@example.com" \
   --constraint "Skip optional fields"
+```
+
+## Performance Optimizations
+
+mobile-use includes several optimizations to reduce cost, improve speed, and increase reliability:
+
+### Screenshot Compression
+
+Before sending screenshots to the AI model, images are resized to 1/2 resolution and converted from PNG to JPEG (quality 80). This reduces vision token costs by **89-98%** per image while maintaining sufficient quality for UI element identification.
+
+- Original: 1290x2796 PNG (~300-1000KB)
+- Optimized: 645x1398 JPEG (~15-85KB)
+- Implementation: `sharp` library in `agent.ts:optimizeImage()`
+
+### History Image Stripping
+
+The conversation history sent to the AI model can accumulate many screenshots. To avoid sending redundant old images, only the **last 2 screenshots** are kept as images — older messages are converted to text-only summaries (`[screenshot omitted]`). This removes ~6 redundant screenshots per API call, reducing vision tokens by an additional **~60%** while preserving full action context.
+
+### Adaptive Post-Action Delay
+
+Instead of a fixed 1500ms delay between steps, delays are tuned per action type:
+
+| Action | Delay |
+|--------|-------|
+| `launchApp`, `stopApp` | 3000ms |
+| `inputText`, `scroll`, `swipe` | 800ms |
+| `tap`, `tapText`, others | 500ms |
+| `wait` | 0ms (self-managed) |
+
+This reduces per-step overhead by **30-60%** for tap-heavy workflows.
+
+### Device Language Hint
+
+Use the `--language` flag to tell the AI model what language the device UI is in. This prevents the model from trying English text (e.g., "General") when the device shows localized text (e.g., "一般").
+
+```bash
+mobile-use com.apple.Preferences "Go to General" \
+  --language "Traditional Chinese (繁體中文)"
 ```
 
 ## Troubleshooting
