@@ -56,7 +56,7 @@ GPT 5.2 has the highest recorded [ScreenSpot Pro](https://llm-stats.com/benchmar
 - **Maestro CLI** (auto-installed via `mobile-use install-maestro`)
 
 ### For iOS Simulator
-- Xcode with iOS Simulator
+- Xcode with iOS Simulator (iOS 18.x or earlier — Maestro does not support iOS 26 simulators, see [Troubleshooting](#ios-26-xcode-26x-compatibility))
 
 ### For Android
 - Android SDK with emulator or ADB-connected device
@@ -469,29 +469,37 @@ mobile-use com.example.app "Your task" \
   --team-id YOUR_TEAM_ID
 ```
 
-**For simulators → build Maestro from source:**
+**For simulators → use an older iOS runtime:**
 
-The Maestro `main` branch has recent iOS 26 fixes not yet in released versions (as of 2.1.0):
+Maestro does **not** support iOS 26 simulators, even when built from source (tested: `main` branch hangs indefinitely on `maestro test`). The workaround is to install an older iOS simulator runtime:
 
 ```bash
-# Build Maestro from source
-cd /tmp && git clone --depth 1 https://github.com/mobile-dev-inc/maestro.git maestro-build
-cd maestro-build && bash installLocally.sh
+# Install iOS 18.x runtime via Xcode
+# Xcode → Settings → Platforms → + → iOS 18.x
 
-# Then use the default Maestro runner
+# Create a simulator with the older runtime
+xcrun simctl create "iPhone 16 Pro" "iPhone 16 Pro" iOS-18-4
+
+# Boot and use it
+xcrun simctl boot "iPhone 16 Pro"
 mobile-use com.example.app "Your task" --runner maestro
 ```
 
+Alternatively, if you have a physical iOS device (even running iOS 26.x), use the WDA runner — it works regardless of iOS version.
+
 **Why WDA works but XCTest doesn't:**
+
+The root cause is that Maestro relies on XCTest, and Apple changed XCTest behavior in Xcode 26.x. The XCTest driver installs on the device/simulator but immediately exits without listening on port 7001.
+
+WDA (WebDriverAgent) is a separate Apple framework that communicates over HTTP and is not affected by the XCTest changes.
 
 | Approach | Backend | iOS 26 Status | Performance |
 |----------|---------|---------------|-------------|
-| `--runner maestro` | Maestro CLI + XCTest | ❌ XCTest driver crashes on Xcode 26.x | Baseline |
+| `--runner maestro` | Maestro CLI + XCTest | ❌ Hangs on both simulator and device | Baseline |
 | `maestro-ios-device` | XCTest bridge | ❌ Same XCTest issue | ~1x |
-| `maestro-runner` | WDA (via CLI) | ✅ Works, but restarts WDA per action | ~10-18s/action |
-| `--runner wda` | WDA (direct HTTP) | ✅ Persistent session, reuses connection | **~0.2-1s/action** |
-
-The `--runner wda` option communicates directly with WebDriverAgent over HTTP, keeping a persistent session. This avoids the XCTest compatibility issue entirely and is 24-143x faster than `maestro-runner` (which restarts WDA for every action).
+| `maestro-runner` | WDA (via CLI) | ✅ Physical device only, restarts WDA per action | ~10-18s/action |
+| `--runner wda` | WDA (direct HTTP) | ✅ Physical device, persistent session | **~0.2-1s/action** |
+| Older iOS simulator | Maestro + XCTest | ✅ Use iOS 18.x runtime as workaround | Baseline |
 
 ## 📄 License
 
