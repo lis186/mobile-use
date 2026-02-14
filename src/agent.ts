@@ -55,11 +55,8 @@ export class TaskAgent {
       ],
     };
 
-    if (this.conversationHistory.length > 10) {
-      this.conversationHistory = this.conversationHistory.slice(-8);
-    }
-
     this.conversationHistory.push(userMessage);
+    this.trimHistory();
 
     const response = await generateText({
       model: this.getModel(),
@@ -102,6 +99,39 @@ export class TaskAgent {
     return optimized;
   }
 
+  /**
+   * Keep images only in the last KEEP_IMAGES user messages.
+   * Older user messages get images stripped to text-only summaries,
+   * drastically reducing vision tokens while preserving action context.
+   */
+  private trimHistory(): void {
+    const KEEP_IMAGES = 2; // keep screenshots in last 2 user msgs
+    const MAX_MESSAGES = 20; // can keep more now that old msgs are text-only
+
+    if (this.conversationHistory.length > MAX_MESSAGES) {
+      this.conversationHistory = this.conversationHistory.slice(-MAX_MESSAGES);
+    }
+
+    // Count user messages from the end to find which ones to strip
+    let userMsgCount = 0;
+    for (let i = this.conversationHistory.length - 1; i >= 0; i--) {
+      const msg = this.conversationHistory[i]!;
+      if (msg.role === 'user') {
+        userMsgCount++;
+        if (userMsgCount > KEEP_IMAGES && Array.isArray(msg.content)) {
+          const textParts = msg.content
+            .filter((p: { type: string }) => p.type === 'text')
+            .map((p: { type: string; text?: string }) => p.text ?? '');
+
+          this.conversationHistory[i] = {
+            role: 'user',
+            content: `[screenshot omitted] ${textParts.join(' ')}`,
+          };
+        }
+      }
+    }
+  }
+
   private detectStuckPattern(history: string[]): string | null {
     if (history.length < 3) return null;
 
@@ -134,6 +164,13 @@ export class TaskAgent {
       : '';
 
     return `You are an AI agent controlling a mobile app to complete a task.
+
+IMPORTANT: The device UI language is Traditional Chinese (繁體中文).
+All labels, buttons, and menu items are in Chinese. For example:
+- "Settings" → "設定", "General" → "一般", "About" → "關於本機"
+- "Search" → "搜尋", "Done" → "完成", "Cancel" → "取消"
+- "Back" → "返回", "Edit" → "編輯", "Delete" → "刪除"
+When using tapText, always use the CHINESE text visible on screen, not English translations.
 
 OBJECTIVE: ${task}
 
