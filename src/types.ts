@@ -2,7 +2,7 @@
  * Type definitions for mobile-use
  */
 
-export type RunnerType = 'maestro' | 'maestro-runner' | 'wda';
+export type RunnerType = 'maestro' | 'maestro-runner' | 'wda' | 'xctest';
 
 export interface TaskConfig {
   bundleId?: string;

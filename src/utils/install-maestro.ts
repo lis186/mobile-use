@@ -197,14 +197,6 @@ export async function ensureMaestroIosDeviceInstalled(): Promise<boolean> {
   return await installMaestroIosDevice();
 }
 
-// Run directly if called as script
-if (import.meta.url === `file://${process.argv[1]}`) {
-  ensureMaestroInstalled()
-    .then((success) => {
-      process.exit(success ? 0 : 1);
-    })
-    .catch((error) => {
-      console.error('Error:', error);
-      process.exit(1);
-    });
-}
+// Note: standalone invocation removed — use `mobile-use install-maestro` instead.
+// The old main-guard (`import.meta.url === process.argv[1]`) fires in bundled
+// builds, killing the CLI while async runners (WDA/XCTest) are still connecting.

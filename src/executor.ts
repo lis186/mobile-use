@@ -6,6 +6,7 @@ import ora, { type Ora } from 'ora';
 import pc from 'picocolors';
 import { MaestroClient } from './maestro.js';
 import { WDAClient } from './wda.js';
+import { XCTestClient } from './xctest.js';
 import { TaskAgent } from './agent.js';
 import type { TaskConfig, AgentDecision, ExecutionResult } from './types.js';
 
@@ -23,14 +24,21 @@ function createSpinner(text: string): Ora {
 }
 
 export class TaskExecutor {
-  private maestro: MaestroClient | WDAClient;
+  private maestro: MaestroClient | WDAClient | XCTestClient;
   private agent: TaskAgent;
   private config: TaskConfig;
 
   constructor(config: TaskConfig, apiKey: string, provider: 'google' | 'openai' = 'google') {
     this.config = config;
 
-    if (config.runner === 'wda' && config.iosDevice) {
+    if (config.runner === 'xctest') {
+      this.maestro = new XCTestClient({
+        simulatorId: config.deviceId ?? config.iosDevice?.udid ?? 'booted',
+        xctestrunPath: config.iosDevice?.appFile, // reuse --app-file for xctestrun path
+        port: config.iosDevice?.driverPort ?? 22087,
+        bundleId: config.bundleId,
+      });
+    } else if (config.runner === 'wda' && config.iosDevice) {
       this.maestro = new WDAClient({
         udid: config.iosDevice.udid,
         teamId: config.iosDevice.teamId ?? '',
@@ -70,7 +78,7 @@ export class TaskExecutor {
     console.log(pc.cyan('🔄 Max Steps: ') + pc.white(String(this.config.maxSteps)));
     console.log('');
 
-    // Start WDA lifecycle if using WDA runner
+    // Start driver lifecycle (WDA or XCTest)
     if (this.maestro instanceof WDAClient) {
       const wdaSpinner = createSpinner('Starting WDA server...').start();
       try {
@@ -78,6 +86,16 @@ export class TaskExecutor {
         wdaSpinner.succeed('WDA server ready');
       } catch (error) {
         wdaSpinner.fail('Failed to start WDA server');
+        const err = error as Error;
+        return { success: false, reason: err.message, steps: 0 };
+      }
+    } else if (this.maestro instanceof XCTestClient) {
+      const xctestSpinner = createSpinner('Starting XCTest driver...').start();
+      try {
+        await this.maestro.connect();
+        xctestSpinner.succeed('XCTest driver ready');
+      } catch (error) {
+        xctestSpinner.fail('Failed to start XCTest driver');
         const err = error as Error;
         return { success: false, reason: err.message, steps: 0 };
       }
@@ -192,9 +210,11 @@ export class TaskExecutor {
       console.log(pc.yellow('\n⏱️ Max steps reached'));
       return { success: false, reason: 'Timeout - max steps exceeded', steps };
     } finally {
-      // Clean up WDA processes
+      // Clean up driver processes
       if (this.maestro instanceof WDAClient) {
         await this.maestro.stop();
+      } else if (this.maestro instanceof XCTestClient) {
+        await this.maestro.disconnect();
       }
     }
   }

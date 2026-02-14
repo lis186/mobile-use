@@ -11,6 +11,7 @@ import type { MobileDevice } from '../core/device.js';
 import { parseAccessibilityTree } from '../core/tree-parser.js';
 import { WDAClient } from '../wda.js';
 import { MaestroClient } from '../maestro.js';
+import { XCTestClient } from '../xctest.js';
 import type { RunnerType } from '../types.js';
 
 export interface McpServerConfig {
@@ -18,6 +19,7 @@ export interface McpServerConfig {
   iosDeviceUdid?: string;
   teamId?: string;
   driverPort?: number;
+  xctestrunPath?: string;
 }
 
 // ── Device Session Manager ────────────────────────────────────
@@ -70,7 +72,15 @@ class DeviceSession {
   }
 
   private createDevice(): MobileDevice {
-    const { runner, iosDeviceUdid, teamId, driverPort } = this.config;
+    const { runner, iosDeviceUdid, teamId, driverPort, xctestrunPath } = this.config;
+
+    if (runner === 'xctest') {
+      return new XCTestClient({
+        simulatorId: iosDeviceUdid ?? 'booted',
+        xctestrunPath,
+        port: driverPort ?? 22087,
+      });
+    }
 
     if (runner === 'wda') {
       return new WDAClient({

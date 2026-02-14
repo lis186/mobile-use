@@ -95,7 +95,8 @@ program
   .option('--team-id <id>', 'Apple Developer Team ID')
   .option('--app-file <path>', 'Path to .ipa file (optional for maestro-runner)')
   .option('--driver-port <port>', 'Driver host port (default: 8100 for wda, 6001 for maestro)')
-  .option('--runner <type>', 'Runner backend: maestro, maestro-runner, or wda (default: maestro)')
+  .option('--runner <type>', 'Runner backend: maestro, maestro-runner, wda, or xctest (default: maestro)')
+  .option('--xctestrun-path <path>', 'Path to .xctestrun file (for xctest runner)')
   .option('--language <lang>', 'Device UI language (e.g., "Traditional Chinese (繁體中文)")')
   .option('--criteria <criteria...>', 'Success criteria (can specify multiple)')
   .option('--constraint <constraints...>', 'Constraints (can specify multiple)')
@@ -135,9 +136,18 @@ program
     const iosDeviceUdid = options?.iosDevice as string | undefined;
     const teamId = options?.teamId as string | undefined;
     const appFile = options?.appFile as string | undefined;
+    const xctestrunPath = options?.xctestrunPath as string | undefined;
 
-    // WDA runner: requires --ios-device and --team-id, no --app-file needed
-    if (runner === 'wda') {
+    // Runner-specific validation
+    if (runner === 'xctest') {
+      if (!options?.device && !iosDeviceUdid) {
+        console.error(pc.red('\n❌ Error: --runner xctest requires --device <simulator-udid>'));
+        console.log(pc.dim('\nUsage:'));
+        console.log(pc.dim('  mobile-use run <bundleId> <task> --device <sim-udid> --runner xctest'));
+        console.log(pc.dim('  mobile-use run <bundleId> <task> --device <sim-udid> --runner xctest --xctestrun-path /path/to/file.xctestrun'));
+        process.exit(1);
+      }
+    } else if (runner === 'wda') {
       if (!iosDeviceUdid || !teamId) {
         console.error(pc.red('\n❌ Error: --runner wda requires --ios-device and --team-id'));
         console.log(pc.dim('\nUsage:'));
@@ -155,28 +165,29 @@ program
 
     const { apiKey, provider, defaultModel } = getApiConfig(options?.model as string | undefined);
 
-    const driverPort = runner === 'wda'
-      ? parseInt(String(options?.driverPort ?? 8100), 10)
-      : parseInt(String(options?.driverPort ?? 6001), 10);
+    const driverPort = runner === 'xctest'
+      ? parseInt(String(options?.driverPort ?? 22087), 10)
+      : runner === 'wda'
+        ? parseInt(String(options?.driverPort ?? 8100), 10)
+        : parseInt(String(options?.driverPort ?? 6001), 10);
 
+    // For xctest runner, pass xctestrun path via iosDevice.appFile field
+    const deviceId = options?.device as string | undefined;
     const config: TaskConfig = {
       bundleId,
       task,
       maxSteps: parseInt(String(options?.maxSteps ?? DEFAULT_MAX_STEPS), 10),
       model: String(options?.model ?? defaultModel),
       language: options?.language as string | undefined,
-      deviceId: options?.device as string | undefined,
+      deviceId: runner === 'xctest' ? (deviceId ?? iosDeviceUdid) : deviceId,
       successCriteria: options?.criteria as string[] | undefined,
       constraints: options?.constraint as string[] | undefined,
       runner,
-      iosDevice: iosDeviceUdid
-        ? {
-            udid: iosDeviceUdid,
-            teamId,
-            appFile,
-            driverPort,
-          }
-        : undefined,
+      iosDevice: runner === 'xctest'
+        ? { udid: deviceId ?? iosDeviceUdid ?? 'booted', appFile: xctestrunPath, driverPort }
+        : iosDeviceUdid
+          ? { udid: iosDeviceUdid, teamId, appFile, driverPort }
+          : undefined,
     };
 
     const executor = new TaskExecutor(config, apiKey, provider);
@@ -288,18 +299,21 @@ program
 program
   .command('mcp')
   .description('Start MCP server for AI agent integration (stdio transport)')
-  .option('--runner <type>', 'Runner backend: maestro or wda (default: maestro)')
+  .option('--runner <type>', 'Runner backend: maestro, wda, or xctest (default: maestro)')
   .option('--ios-device <udid>', 'Physical iOS device UDID')
+  .option('--device <id>', 'Simulator device ID (for xctest runner)')
   .option('--team-id <id>', 'Apple Developer Team ID')
-  .option('--driver-port <port>', 'Driver host port (default: 8100 for wda, 6001 for maestro)')
+  .option('--driver-port <port>', 'Driver host port (default: 22087 for xctest, 8100 for wda, 6001 for maestro)')
+  .option('--xctestrun-path <path>', 'Path to .xctestrun file (for xctest runner)')
   .action(async (options: Record<string, unknown>) => {
     const { startMcpServer } = await import('./mcp/server.js');
     const runner = (options.runner as RunnerType) ?? 'maestro';
     await startMcpServer({
       runner,
-      iosDeviceUdid: options.iosDevice as string | undefined,
+      iosDeviceUdid: (options.device as string | undefined) ?? (options.iosDevice as string | undefined),
       teamId: options.teamId as string | undefined,
       driverPort: options.driverPort ? parseInt(String(options.driverPort), 10) : undefined,
+      xctestrunPath: options.xctestrunPath as string | undefined,
     });
   });
 
@@ -314,7 +328,8 @@ program
   .option('--team-id <id>', 'Apple Developer Team ID')
   .option('--app-file <path>', 'Path to .ipa file')
   .option('--driver-port <port>', 'Driver host port (default: 8100 for wda, 6001 for maestro)')
-  .option('--runner <type>', 'Runner backend: maestro, maestro-runner, or wda')
+  .option('--runner <type>', 'Runner backend: maestro, maestro-runner, wda, or xctest')
+  .option('--xctestrun-path <path>', 'Path to .xctestrun file (for xctest runner)')
   .option('--language <lang>', 'Device UI language (e.g., "Traditional Chinese (繁體中文)")')
   .option('--criteria <criteria...>', 'Success criteria')
   .option('--constraint <constraints...>', 'Constraints')
@@ -350,8 +365,15 @@ program
     const iosDeviceUdid = options?.iosDevice as string | undefined;
     const teamId = options?.teamId as string | undefined;
     const appFile = options?.appFile as string | undefined;
+    const xctestrunPath2 = options?.xctestrunPath as string | undefined;
 
-    if (runner === 'wda' && (!iosDeviceUdid || !teamId)) {
+    if (runner === 'xctest') {
+      if (!options?.device && !iosDeviceUdid) {
+        console.error(pc.red('\n❌ Error: --runner xctest requires --device <simulator-udid>'));
+        console.log(pc.dim('Usage: mobile-use <bundleId> <task> --device <sim-udid> --runner xctest'));
+        process.exit(1);
+      }
+    } else if (runner === 'wda' && (!iosDeviceUdid || !teamId)) {
       console.error(pc.red('\n❌ Error: --runner wda requires --ios-device and --team-id'));
       console.log(pc.dim('Usage: mobile-use <bundleId> <task> --ios-device <udid> --team-id <id> --runner wda'));
       process.exit(1);
@@ -363,28 +385,28 @@ program
 
     const { apiKey, provider, defaultModel } = getApiConfig(options?.model as string | undefined);
 
-    const driverPort = runner === 'wda'
-      ? parseInt(String(options?.driverPort ?? 8100), 10)
-      : parseInt(String(options?.driverPort ?? 6001), 10);
+    const driverPort = runner === 'xctest'
+      ? parseInt(String(options?.driverPort ?? 22087), 10)
+      : runner === 'wda'
+        ? parseInt(String(options?.driverPort ?? 8100), 10)
+        : parseInt(String(options?.driverPort ?? 6001), 10);
 
+    const deviceId2 = options?.device as string | undefined;
     const config: TaskConfig = {
       bundleId,
       task,
       maxSteps: parseInt(String(options?.maxSteps ?? DEFAULT_MAX_STEPS), 10),
       model: String(options?.model ?? defaultModel),
       language: options?.language as string | undefined,
-      deviceId: options?.device as string | undefined,
+      deviceId: runner === 'xctest' ? (deviceId2 ?? iosDeviceUdid) : deviceId2,
       successCriteria: options?.criteria as string[] | undefined,
       constraints: options?.constraint as string[] | undefined,
       runner,
-      iosDevice: iosDeviceUdid
-        ? {
-            udid: iosDeviceUdid,
-            teamId,
-            appFile,
-            driverPort,
-          }
-        : undefined,
+      iosDevice: runner === 'xctest'
+        ? { udid: deviceId2 ?? iosDeviceUdid ?? 'booted', appFile: xctestrunPath2, driverPort }
+        : iosDeviceUdid
+          ? { udid: iosDeviceUdid, teamId, appFile, driverPort }
+          : undefined,
     };
 
     const executor = new TaskExecutor(config, apiKey, provider);
@@ -399,5 +421,5 @@ program
     process.exit(result.success ? 0 : 1);
   });
 
-// Parse and execute
-program.parse();
+// Parse and execute (await + parseAsync needed for async action handlers in ESM)
+await program.parseAsync();
