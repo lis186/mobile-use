@@ -56,7 +56,9 @@ GPT 5.2 has the highest recorded [ScreenSpot Pro](https://llm-stats.com/benchmar
 - **Maestro CLI** (auto-installed via `mobile-use install-maestro`)
 
 ### For iOS Simulator
-- Xcode with iOS Simulator (iOS 18.x or earlier — Maestro does not support iOS 26 simulators, see [Troubleshooting](#ios-26-xcode-26x-compatibility))
+- Xcode with iOS Simulator
+- For iOS 26+ simulators, use `--runner xctest` (see [XCTest Runner](#xctest-runner-ios-26-simulators))
+- For iOS 18.x and earlier, `--runner maestro` works out of the box
 
 ### For Android
 - Android SDK with emulator or ADB-connected device
@@ -186,12 +188,13 @@ mobile-use com.example.app "Create a note" \
 | `-m, --max-steps <n>` | Maximum steps before timeout | `100` |
 | `--model <name>` | AI model to use | `gemini-2.5-flash` |
 | `--language <code>` | Device UI language (`zh-TW`, `ja`, `ko`, etc.) | - |
-| `--runner <type>` | Runner backend: `maestro`, `maestro-runner`, or `wda` | `maestro` |
-| `--device <id>` | Android device ID | - |
+| `--runner <type>` | Runner backend: `maestro`, `maestro-runner`, `wda`, or `xctest` | `maestro` |
+| `--device <id>` | Device ID (Android emulator or iOS simulator UDID for xctest) | - |
 | `--ios-device <udid>` | Physical iOS device UDID | - |
 | `--team-id <id>` | Apple Developer Team ID | - |
 | `--app-file <path>` | Path to .ipa file | - |
-| `--driver-port <port>` | Driver host port | `8100` (wda) / `6001` (maestro) |
+| `--xctestrun-path <path>` | Path to .xctestrun file (for xctest runner) | - |
+| `--driver-port <port>` | Driver host port | `22087` (xctest) / `8100` (wda) / `6001` (maestro) |
 
 ## Available Actions
 
@@ -324,7 +327,10 @@ mobile-use can run as an [MCP (Model Context Protocol)](https://modelcontextprot
 # Start MCP server with WDA runner (physical iOS device)
 mobile-use mcp --runner wda --ios-device DEVICE_UDID --team-id YOUR_TEAM_ID
 
-# Start MCP server with Maestro runner (simulator)
+# Start MCP server with XCTest runner (iOS simulator, including iOS 26+)
+mobile-use mcp --runner xctest --device SIMULATOR_UDID
+
+# Start MCP server with Maestro runner (simulator, iOS 18.x or earlier)
 mobile-use mcp --runner maestro
 ```
 
@@ -359,10 +365,12 @@ Once configured, Claude can use 16 tools to interact with your device:
 
 | Option | Description | Default |
 |--------|-------------|---------|
-| `--runner <type>` | Runner backend: `maestro` or `wda` | `maestro` |
+| `--runner <type>` | Runner backend: `maestro`, `wda`, or `xctest` | `maestro` |
+| `--device <id>` | Simulator UDID (for xctest runner) | - |
 | `--ios-device <udid>` | Physical iOS device UDID | - |
 | `--team-id <id>` | Apple Developer Team ID | - |
-| `--driver-port <port>` | Driver host port | `8100` (wda) / `6001` (maestro) |
+| `--xctestrun-path <path>` | Path to .xctestrun file (for xctest runner) | - |
+| `--driver-port <port>` | Driver host port | `22087` (xctest) / `8100` (wda) / `6001` (maestro) |
 
 ### Architecture
 
@@ -406,6 +414,39 @@ mobile-use com.apple.Preferences "Go to General" --language zh-TW
 ```
 
 Supported codes: `zh-TW`, `zh-CN`, `ja`, `ko`, `en`, `es`, `fr`, `de`, `pt`, `th`, `vi`, `ar`. Any other value is passed through as-is.
+
+## XCTest Runner (iOS 26+ Simulators)
+
+The `xctest` runner connects directly to the Maestro XCTest driver's REST API on port 22087, bypassing the Maestro CLI. This is the recommended runner for **iOS simulators on macOS Tahoe / Xcode 26.x**, where the Maestro CLI hangs.
+
+### Usage
+
+```bash
+# Basic usage — auto-builds and starts the XCTest driver
+mobile-use com.apple.mobilesafari "Search for hello" \
+  --runner xctest \
+  --device SIMULATOR_UDID
+
+# With a custom xctestrun file
+mobile-use com.apple.mobilesafari "Search for hello" \
+  --runner xctest \
+  --device SIMULATOR_UDID \
+  --xctestrun-path /path/to/maestro-driver-ios.xctestrun
+```
+
+### How It Works
+
+1. Checks if the XCTest driver is already running on port 22087
+2. If not, auto-discovers or builds the `.xctestrun` file from `~/.maestro/maestro-ios-xctest-runner/`
+3. Starts `xcodebuild test-without-building` with `-only-testing testHttpServer`
+4. Waits for the HTTP server to become ready
+5. All device actions (tap, screenshot, input, etc.) go through the REST API
+
+### Prerequisites
+
+- Maestro CLI installed (`mobile-use install-maestro`) — needed for the XCTest driver source
+- Xcode with a booted iOS simulator
+- The driver is auto-built on first run (~1-2 min). Subsequent runs reuse the built artifacts.
 
 ## Troubleshooting
 
@@ -458,9 +499,25 @@ Maestro's XCTest driver is **incompatible with Xcode 26.x**. Symptoms:
 
 Related issues: [#2894](https://github.com/mobile-dev-inc/maestro/issues/2894), [#2932](https://github.com/mobile-dev-inc/maestro/issues/2932)
 
+**For simulators → use XCTest runner (recommended):**
+
+The `xctest` runner connects directly to the Maestro XCTest driver's REST API, bypassing the Maestro CLI entirely. This works on iOS 26 simulators where `maestro test` hangs:
+
+```bash
+# Get your simulator UDID
+xcrun simctl list devices booted
+
+# Run with xctest runner
+mobile-use com.example.app "Your task" \
+  --runner xctest \
+  --device SIMULATOR_UDID
+```
+
+The XCTest driver is auto-built on first run from `~/.maestro/maestro-ios-xctest-runner/`. Subsequent runs connect in seconds if the driver is already running.
+
 **For physical devices → use WDA runner:**
 
-The WDA runner uses Apple's own WebDriverAgent framework, which has forward compatibility with new iOS versions. This is the recommended solution:
+The WDA runner uses Apple's own WebDriverAgent framework, which has forward compatibility with new iOS versions:
 
 ```bash
 mobile-use com.example.app "Your task" \
@@ -469,9 +526,9 @@ mobile-use com.example.app "Your task" \
   --team-id YOUR_TEAM_ID
 ```
 
-**For simulators → use an older iOS runtime:**
+**Fallback: use an older iOS simulator runtime:**
 
-Maestro does **not** support iOS 26 simulators, even when built from source (tested: `main` branch hangs indefinitely on `maestro test`). The workaround is to install an older iOS simulator runtime:
+If you prefer the Maestro runner, you can install an older iOS runtime:
 
 ```bash
 # Install iOS 18.x runtime via Xcode
@@ -485,20 +542,17 @@ xcrun simctl boot "iPhone 16 Pro"
 mobile-use com.example.app "Your task" --runner maestro
 ```
 
-Alternatively, if you have a physical iOS device (even running iOS 26.x), use the WDA runner — it works regardless of iOS version.
+**Why Maestro CLI doesn't work on iOS 26:**
 
-**Why WDA works but XCTest doesn't:**
-
-The root cause is that Maestro relies on XCTest, and Apple changed XCTest behavior in Xcode 26.x. The XCTest driver installs on the device/simulator but immediately exits without listening on port 7001.
-
-WDA (WebDriverAgent) is a separate Apple framework that communicates over HTTP and is not affected by the XCTest changes.
+The root cause is that Maestro CLI relies on its own device enumeration and XCTest lifecycle management, which broke with Xcode 26.x. The XCTest driver itself works fine — only the Maestro CLI wrapper is broken. The `xctest` runner bypasses this by talking to the XCTest driver's HTTP API directly.
 
 | Approach | Backend | iOS 26 Status | Performance |
 |----------|---------|---------------|-------------|
-| `--runner maestro` | Maestro CLI + XCTest | ❌ Hangs on both simulator and device | Baseline |
-| `maestro-ios-device` | XCTest bridge | ❌ Same XCTest issue | ~1x |
-| `maestro-runner` | WDA (via CLI) | ✅ Physical device only, restarts WDA per action | ~10-18s/action |
+| `--runner xctest` | XCTest driver (direct HTTP) | ✅ Simulator, persistent session | **~0.2-1s/action** |
 | `--runner wda` | WDA (direct HTTP) | ✅ Physical device, persistent session | **~0.2-1s/action** |
+| `--runner maestro` | Maestro CLI + XCTest | ❌ Hangs on both simulator and device | Baseline |
+| `maestro-ios-device` | XCTest bridge | ❌ Same Maestro CLI issue | ~1x |
+| `maestro-runner` | WDA (via CLI) | ✅ Physical device only, restarts WDA per action | ~10-18s/action |
 | Older iOS simulator | Maestro + XCTest | ✅ Use iOS 18.x runtime as workaround | Baseline |
 
 ## 📄 License
