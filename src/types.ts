@@ -75,6 +75,7 @@ export interface AgentContext {
   stepNumber: number;
   maxSteps: number;
   actionHistory: string[];
+  accessibilityTree?: string;
   language?: string;
   successCriteria?: string[];
   constraints?: string[];

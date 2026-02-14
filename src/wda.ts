@@ -36,6 +36,7 @@ export class WDAClient {
   private xcodebuildProc: ChildProcess | null = null;
   private iproxyProc: ChildProcess | null = null;
   private exitHandler: (() => void) | null = null;
+  private managedProcesses = false;
 
   constructor(config: WDAConfig) {
     this.udid = config.udid;
@@ -51,6 +52,17 @@ export class WDAClient {
   // ── Lifecycle ──────────────────────────────────────────────
 
   async start(): Promise<void> {
+    // Check if WDA is already running (externally managed)
+    if (await this.checkRunning()) {
+      console.log(`[WDA] Already running — connecting to existing instance on port ${this.port}`);
+      await this.createSession();
+      await this.fetchScreenSize();
+      console.log(`[WDA] Connected — session=${this.sessionId}, screen=${this.screenWidth}x${this.screenHeight}`);
+      return;
+    }
+
+    // Full lifecycle: start processes ourselves
+    this.managedProcesses = true;
     this.killLeftovers();
 
     console.log(`[WDA] Starting xcodebuild + iproxy on port ${this.port}...`);
@@ -98,11 +110,6 @@ export class WDAClient {
 
   async stop(): Promise<void> {
     console.log('[WDA] Stopping...');
-    // Unregister exit handler (we're cleaning up properly now)
-    if (this.exitHandler) {
-      process.removeListener('exit', this.exitHandler);
-      this.exitHandler = null;
-    }
     if (this.sessionId) {
       try {
         await this.wdaFetch(`/session/${this.sessionId}`, { method: 'DELETE' });
@@ -111,7 +118,13 @@ export class WDAClient {
       }
       this.sessionId = null;
     }
-    this.syncCleanup();
+    if (this.managedProcesses) {
+      if (this.exitHandler) {
+        process.removeListener('exit', this.exitHandler);
+        this.exitHandler = null;
+      }
+      this.syncCleanup();
+    }
     console.log('[WDA] Stopped');
   }
 
@@ -145,6 +158,19 @@ export class WDAClient {
     } catch {
       // same
     }
+  }
+
+  private async checkRunning(): Promise<boolean> {
+    try {
+      const resp = await fetch(`${this.baseUrl}/status`);
+      if (resp.ok) {
+        const data = (await resp.json()) as { value?: { ready?: boolean } };
+        return data.value?.ready === true;
+      }
+    } catch {
+      // Not running
+    }
+    return false;
   }
 
   private async pollReady(timeoutMs: number): Promise<void> {
@@ -424,6 +450,16 @@ export class WDAClient {
     }
 
     return base64;
+  }
+
+  async source(): Promise<string> {
+    const resp = await this.sessionFetch('/source');
+    const data = (await resp.json()) as { value?: string };
+    return data.value ?? '';
+  }
+
+  async getAccessibilityTree(): Promise<string> {
+    return this.source();
   }
 
   // ── Element Finding ───────────────────────────────────────

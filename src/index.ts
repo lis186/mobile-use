@@ -50,10 +50,30 @@ function createSpinner(text: string): Ora {
   });
 }
 
-function getApiConfig(): { apiKey: string; provider: 'google' | 'openai'; defaultModel: string } {
+function inferProvider(model: string): 'google' | 'openai' | null {
+  if (/^(gpt-|o[1-9]|chatgpt-)/.test(model)) return 'openai';
+  if (/^gemini-/.test(model)) return 'google';
+  return null;
+}
+
+function getApiConfig(model?: string): { apiKey: string; provider: 'google' | 'openai'; defaultModel: string } {
   const googleKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY;
   const openaiKey = process.env.OPENAI_API_KEY;
 
+  // If --model is specified, infer provider from model name
+  const inferred = model ? inferProvider(model) : null;
+  if (inferred === 'openai' && openaiKey) {
+    return { apiKey: openaiKey, provider: 'openai', defaultModel: model! };
+  }
+  if (inferred === 'google' && googleKey) {
+    return { apiKey: googleKey, provider: 'google', defaultModel: model! };
+  }
+  if (inferred && !openaiKey && !googleKey) {
+    console.error(pc.red(`\n❌ Error: Model "${model}" requires ${inferred === 'openai' ? 'OPENAI_API_KEY' : 'GOOGLE_GENERATIVE_AI_API_KEY'}`));
+    process.exit(1);
+  }
+
+  // Fallback: pick first available key
   if (googleKey) {
     return { apiKey: googleKey, provider: 'google', defaultModel: DEFAULT_MODEL_GOOGLE };
   }
@@ -146,7 +166,7 @@ program
       process.exit(1);
     }
 
-    const { apiKey, provider, defaultModel } = getApiConfig();
+    const { apiKey, provider, defaultModel } = getApiConfig(options?.model as string | undefined);
 
     const driverPort = runner === 'wda'
       ? parseInt(String(options?.driverPort ?? 8100), 10)
@@ -335,7 +355,7 @@ program
       process.exit(1);
     }
 
-    const { apiKey, provider, defaultModel } = getApiConfig();
+    const { apiKey, provider, defaultModel } = getApiConfig(options?.model as string | undefined);
 
     const driverPort = runner === 'wda'
       ? parseInt(String(options?.driverPort ?? 8100), 10)

@@ -395,4 +395,13 @@ export class MaestroClient {
       throw new Error(`Hierarchy failed: ${err.message || 'Unknown error'}`);
     }
   }
+
+  async getAccessibilityTree(): Promise<string> {
+    try {
+      const data = await this.hierarchy();
+      return JSON.stringify(data);
+    } catch {
+      return '';
+    }
+  }
 }

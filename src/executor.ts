@@ -125,6 +125,15 @@ export class TaskExecutor {
           continue;
         }
 
+        // Fetch accessibility tree (fail-open: continue without it)
+        let accessibilityTree: string | undefined;
+        try {
+          const rawTree = await this.maestro.getAccessibilityTree();
+          accessibilityTree = rawTree || undefined;
+        } catch {
+          // Tree fetch failed — continue with screenshot-only
+        }
+
         // Decide
         const thinkSpinner = createSpinner('AI thinking...').start();
         let decision: AgentDecision;
@@ -134,6 +143,7 @@ export class TaskExecutor {
             stepNumber: steps,
             maxSteps: this.config.maxSteps,
             actionHistory,
+            accessibilityTree,
             language: this.config.language,
             successCriteria: this.config.successCriteria,
             constraints: this.config.constraints,

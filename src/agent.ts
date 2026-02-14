@@ -42,17 +42,35 @@ export class TaskAgent {
 
     const stuckWarning = this.detectStuckPattern(context.actionHistory);
 
+    const content: Array<{ type: 'image'; image: Buffer } | { type: 'text'; text: string }> = [
+      { type: 'image', image: imageBuffer },
+    ];
+
+    // Add accessibility tree if available and passes quality gate
+    if (context.accessibilityTree) {
+      const parsedTree = this.parseAccessibilityTree(context.accessibilityTree);
+      const elementCount = parsedTree ? parsedTree.split('\n').length : 0;
+      if (elementCount >= 2) {
+        content.push({
+          type: 'text',
+          text: `UI ELEMENTS ON SCREEN:\n${parsedTree}`,
+        });
+        console.log(`  🌳 Tree: ${elementCount} elements (included)`);
+      } else {
+        console.log(`  🌳 Tree: ${elementCount} element${elementCount !== 1 ? 's' : ''} (skipped — too sparse)`);
+      }
+    }
+
+    content.push({
+      type: 'text',
+      text: stuckWarning
+        ? `${stuckWarning}\n\nAnalyze the screenshot. What DIFFERENT action should you try?`
+        : 'Analyze the screenshot. What is the ONE best action to progress toward the task goal?',
+    });
+
     const userMessage: ModelMessage = {
       role: 'user',
-      content: [
-        { type: 'image', image: imageBuffer },
-        {
-          type: 'text',
-          text: stuckWarning
-            ? `${stuckWarning}\n\nAnalyze the screenshot. What DIFFERENT action should you try?`
-            : 'Analyze the screenshot. What is the ONE best action to progress toward the task goal?',
-        },
-      ],
+      content,
     };
 
     this.conversationHistory.push(userMessage);
@@ -235,6 +253,12 @@ done: Task complete (only when VERIFIED on screen)
 failed: Cannot complete (only after 10+ different attempts)
   {"action": "failed", "params": {}, "reasoning": "...", "progress": N}
 
+ACCESSIBILITY TREE
+You may receive a "UI ELEMENTS ON SCREEN" section listing visible elements with their types, labels, and approximate positions (as percentages).
+- Use element labels for tapText actions (EXACT match)
+- Use element positions as hints for tap coordinate estimation
+- If tree data conflicts with what you see in the screenshot, trust the screenshot
+
 WHEN STUCK (same action 2+ times with no change):
 1. Your coordinates are probably WRONG - shift by 5-10%
 2. Try tapText instead of tap coordinates
@@ -249,6 +273,117 @@ Respond with ONLY valid JSON (no markdown):`;
 
   reset(): void {
     this.conversationHistory = [];
+  }
+
+  // ── Accessibility Tree Parsing ──────────────────────────────
+
+  private parseAccessibilityTree(raw: string): string {
+    if (raw.trimStart().startsWith('<') || raw.trimStart().startsWith('<?xml')) {
+      return this.parseWDATree(raw);
+    }
+    try {
+      const json = JSON.parse(raw) as Record<string, unknown>;
+      return this.parseMaestroTree(json);
+    } catch {
+      return '';
+    }
+  }
+
+  private parseWDATree(xml: string): string {
+    const lines: string[] = [];
+
+    // Extract screen dimensions from root Application element
+    let screenW = 393, screenH = 852;
+    const appMatch = xml.match(/<XCUIElementTypeApplication\s+[^>]*?width="(\d+)"[^>]*?height="(\d+)"/);
+    if (appMatch) {
+      screenW = parseInt(appMatch[1]!, 10);
+      screenH = parseInt(appMatch[2]!, 10);
+    }
+
+    const getAttr = (attrs: string, name: string): string | null => {
+      const m = attrs.match(new RegExp(`\\b${name}="([^"]*)"`));
+      return m ? m[1]! : null;
+    };
+
+    // Match all XCUIElementType elements
+    const elementRegex = /<(XCUIElementType\w+)\s+([^>]*?)\/?\s*>/g;
+    let match;
+
+    while ((match = elementRegex.exec(xml)) !== null) {
+      const typeName = match[1]!;
+      const attrs = match[2]!;
+
+      const label = getAttr(attrs, 'label') || getAttr(attrs, 'name') || getAttr(attrs, 'value');
+      const visible = getAttr(attrs, 'visible');
+      if (!label || visible === 'false') continue;
+
+      const shortType = typeName.replace('XCUIElementType', '');
+      // Skip generic containers
+      if (['Other', 'Window', 'Application'].includes(shortType)) continue;
+
+      const x = getAttr(attrs, 'x');
+      const y = getAttr(attrs, 'y');
+      const w = getAttr(attrs, 'width');
+      const h = getAttr(attrs, 'height');
+
+      if (x && y && w && h) {
+        const px = parseInt(x, 10);
+        const py = parseInt(y, 10);
+        const pw = parseInt(w, 10);
+        const ph = parseInt(h, 10);
+
+        // Skip off-screen elements
+        if (px + pw < 0 || py + ph < 0 || px > screenW || py > screenH) continue;
+
+        const pctX = Math.round((px / screenW) * 100);
+        const pctY = Math.round((py / screenH) * 100);
+        const pctX2 = Math.round(((px + pw) / screenW) * 100);
+        const pctY2 = Math.round(((py + ph) / screenH) * 100);
+
+        lines.push(`[${shortType}] "${label}" (${pctX},${pctY} - ${pctX2},${pctY2})`);
+      } else {
+        lines.push(`[${shortType}] "${label}"`);
+      }
+    }
+
+    // Cap at ~2000 chars
+    let result = '';
+    for (const line of lines) {
+      if (result.length + line.length + 1 > 2000) break;
+      result += line + '\n';
+    }
+    return result.trimEnd();
+  }
+
+  private parseMaestroTree(json: Record<string, unknown>): string {
+    const lines: string[] = [];
+    this.walkMaestroNode(json, lines);
+
+    let result = '';
+    for (const line of lines) {
+      if (result.length + line.length + 1 > 2000) break;
+      result += line + '\n';
+    }
+    return result.trimEnd();
+  }
+
+  private walkMaestroNode(node: Record<string, unknown>, lines: string[]): void {
+    if (node.visible === false) return;
+
+    const text = (node.text as string) || (node.label as string) || (node.name as string) || '';
+    const type = (node.type as string) || (node.elementType as string) || '';
+
+    if (text && type) {
+      const shortType = type.replace(/^.*\./, '');
+      lines.push(`[${shortType}] "${text}"`);
+    }
+
+    const children = node.children as Record<string, unknown>[] | undefined;
+    if (children) {
+      for (const child of children) {
+        this.walkMaestroNode(child, lines);
+      }
+    }
   }
 }
 
