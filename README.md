@@ -172,7 +172,7 @@ mobile-use com.example.app "Create a note" \
 | `-t, --task <task>` | Task to execute (when bundleId is omitted) | - |
 | `-m, --max-steps <n>` | Maximum steps before timeout | `100` |
 | `--model <name>` | AI model to use | `gemini-2.5-flash` |
-| `--language <lang>` | Device UI language (e.g., `"Traditional Chinese (繁體中文)"`) | - |
+| `--language <code>` | Device UI language (`zh-TW`, `ja`, `ko`, etc.) | - |
 | `--runner <type>` | Runner backend: `maestro`, `maestro-runner`, or `wda` | `maestro` |
 | `--device <id>` | Android device ID | - |
 | `--ios-device <udid>` | Physical iOS device UDID | - |
@@ -322,9 +322,10 @@ This reduces per-step overhead by **30-60%** for tap-heavy workflows.
 Use the `--language` flag to tell the AI model what language the device UI is in. This prevents the model from trying English text (e.g., "General") when the device shows localized text (e.g., "一般").
 
 ```bash
-mobile-use com.apple.Preferences "Go to General" \
-  --language "Traditional Chinese (繁體中文)"
+mobile-use com.apple.Preferences "Go to General" --language zh-TW
 ```
+
+Supported codes: `zh-TW`, `zh-CN`, `ja`, `ko`, `en`, `es`, `fr`, `de`, `pt`, `th`, `vi`, `ar`. Any other value is passed through as-is.
 
 ## Troubleshooting
 

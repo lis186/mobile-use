@@ -164,7 +164,7 @@ export class TaskAgent {
       : '';
 
     const languageSection = context.language
-      ? `IMPORTANT: The device UI language is ${context.language}.
+      ? `IMPORTANT: The device UI language is ${resolveLanguage(context.language)}.
 All labels, buttons, and menu items are in this language.
 When using tapText, always use the EXACT text visible on screen, not English translations.`
       : '';
@@ -250,4 +250,23 @@ Respond with ONLY valid JSON (no markdown):`;
   reset(): void {
     this.conversationHistory = [];
   }
+}
+
+const LANGUAGE_MAP: Record<string, string> = {
+  'zh-TW': 'Traditional Chinese (繁體中文)',
+  'zh-CN': 'Simplified Chinese (简体中文)',
+  'ja': 'Japanese (日本語)',
+  'ko': 'Korean (한국어)',
+  'en': 'English',
+  'es': 'Spanish (Español)',
+  'fr': 'French (Français)',
+  'de': 'German (Deutsch)',
+  'pt': 'Portuguese (Português)',
+  'th': 'Thai (ภาษาไทย)',
+  'vi': 'Vietnamese (Tiếng Việt)',
+  'ar': 'Arabic (العربية)',
+};
+
+function resolveLanguage(input: string): string {
+  return LANGUAGE_MAP[input] ?? input;
 }
