@@ -220,17 +220,11 @@ The AI can perform these actions on your device:
 ### Prerequisites
 - macOS with Xcode installed
 - Apple Developer account (free tier works for personal devices)
-- iOS device running iOS 16.x - 18.x
+- iOS device connected via USB
 
-### Step-by-Step Setup
+### Device Preparation
 
-1. **Install tools:**
-   ```bash
-   mobile-use install-maestro
-   mobile-use install-ios-device
-   ```
-
-2. **Connect and configure device:**
+1. **Connect and configure device:**
    - Connect iPhone via USB cable
    - Trust the computer when prompted
    - Enable Developer Mode:
@@ -238,37 +232,56 @@ The AI can perform these actions on your device:
    - Enable UI Automation:
      - Settings → Developer → Enable UI Automation
 
-3. **Get device information:**
+2. **Get device information:**
    ```bash
    # Find your device UDID
    xcrun xctrace list devices
-   
+
    # Find your Team ID
    security find-identity -v -p codesigning | grep "Developer"
    ```
 
-4. **Start the bridge (keep this terminal open):**
-   ```bash
-   maestro-ios-device --team-id YOUR_TEAM_ID --device DEVICE_UDID
-   ```
+### Option A: WDA Runner (Recommended)
 
-5. **Run mobile-use in another terminal:**
-   ```bash
-   mobile-use com.example.app "Your task here" \
-     --ios-device DEVICE_UDID \
-     --team-id YOUR_TEAM_ID \
-     --app-file /path/to/app.ipa
-   ```
+The WDA (WebDriverAgent) runner communicates directly with Apple's WebDriverAgent over HTTP. No bridge process needed, ~24-143x faster per action than alternatives, and works with **iOS 12.0+ including iOS 26.x**.
+
+```bash
+# One command — WDA is built and launched automatically
+mobile-use com.apple.mobilenotes "Create a note" \
+  --runner wda \
+  --ios-device DEVICE_UDID \
+  --team-id YOUR_TEAM_ID
+```
+
+On first run, Xcode will build WebDriverAgent (~1-2 min). Subsequent runs connect in seconds.
+
+### Option B: Maestro Runner (iOS ≤ 18.x only)
+
+Uses the `maestro-ios-device` XCTest bridge. **Does not work with iOS 26+ / Xcode 26.x** (see [Troubleshooting](#ios-26-xcode-26x-compatibility)).
+
+```bash
+# 1. Install the iOS device bridge
+mobile-use install-ios-device
+
+# 2. Start the bridge (keep running in separate terminal)
+maestro-ios-device --team-id YOUR_TEAM_ID --device DEVICE_UDID
+
+# 3. Run mobile-use
+mobile-use com.example.app "Create a note" \
+  --ios-device DEVICE_UDID \
+  --team-id YOUR_TEAM_ID
+```
 
 ### Limitations on Physical iOS
-| Feature | Status |
-|---------|--------|
-| Tap, swipe, input | ✅ Works |
-| Screenshots | ✅ Works |
-| App launch | ✅ Works |
-| clearState | ⚠️ Reinstalls app |
-| setLocation | ⚠️ Limited |
-| addMedia | ❌ Not supported |
+| Feature | WDA Runner | Maestro Runner |
+|---------|-----------|----------------|
+| Tap, swipe, input | ✅ | ✅ |
+| Screenshots | ✅ | ✅ |
+| App launch/stop | ✅ | ✅ |
+| Accessibility tree | ✅ | ❌ |
+| iOS 26+ support | ✅ | ❌ |
+| clearState | ❌ | ⚠️ Reinstalls app |
+| setLocation | ❌ | ⚠️ Limited |
 
 ## 🔍 Examples
 
@@ -433,6 +446,52 @@ xcrun xctrace list devices
 # Ensure Xcode is up to date
 # Check device logs: Window → Devices and Simulators → View Device Logs
 ```
+
+### iOS 26+ / Xcode 26.x Compatibility
+
+Maestro's XCTest driver is **incompatible with Xcode 26.x**. Symptoms:
+
+- `spawnSync /bin/sh ETIMEDOUT` — Maestro times out connecting to device
+- `iOS driver not ready in time` — XCTest driver fails to start
+- `Failed to connect to /127.0.0.1:7001` — XCTest runner exits immediately
+- `maestro-ios-device` crashes on iOS 26.x devices
+
+Related issues: [#2894](https://github.com/mobile-dev-inc/maestro/issues/2894), [#2932](https://github.com/mobile-dev-inc/maestro/issues/2932)
+
+**For physical devices → use WDA runner:**
+
+The WDA runner uses Apple's own WebDriverAgent framework, which has forward compatibility with new iOS versions. This is the recommended solution:
+
+```bash
+mobile-use com.example.app "Your task" \
+  --runner wda \
+  --ios-device DEVICE_UDID \
+  --team-id YOUR_TEAM_ID
+```
+
+**For simulators → build Maestro from source:**
+
+The Maestro `main` branch has recent iOS 26 fixes not yet in released versions (as of 2.1.0):
+
+```bash
+# Build Maestro from source
+cd /tmp && git clone --depth 1 https://github.com/mobile-dev-inc/maestro.git maestro-build
+cd maestro-build && bash installLocally.sh
+
+# Then use the default Maestro runner
+mobile-use com.example.app "Your task" --runner maestro
+```
+
+**Why WDA works but XCTest doesn't:**
+
+| Approach | Backend | iOS 26 Status | Performance |
+|----------|---------|---------------|-------------|
+| `--runner maestro` | Maestro CLI + XCTest | ❌ XCTest driver crashes on Xcode 26.x | Baseline |
+| `maestro-ios-device` | XCTest bridge | ❌ Same XCTest issue | ~1x |
+| `maestro-runner` | WDA (via CLI) | ✅ Works, but restarts WDA per action | ~10-18s/action |
+| `--runner wda` | WDA (direct HTTP) | ✅ Persistent session, reuses connection | **~0.2-1s/action** |
+
+The `--runner wda` option communicates directly with WebDriverAgent over HTTP, keeping a persistent session. This avoids the XCTest compatibility issue entirely and is 24-143x faster than `maestro-runner` (which restarts WDA for every action).
 
 ## 📄 License
 
