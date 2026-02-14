@@ -89,6 +89,7 @@ program
   .option('--app-file <path>', 'Path to .ipa file (optional for maestro-runner)')
   .option('--driver-port <port>', 'Driver host port (default: 8100 for wda, 6001 for maestro)')
   .option('--runner <type>', 'Runner backend: maestro, maestro-runner, or wda (default: maestro)')
+  .option('--language <lang>', 'Device UI language (e.g., "Traditional Chinese (繁體中文)")')
   .option('--criteria <criteria...>', 'Success criteria (can specify multiple)')
   .option('--constraint <constraints...>', 'Constraints (can specify multiple)')
   .action(async (bundleIdArg?: string, taskArg?: string, options?: Record<string, unknown>) => {
@@ -156,6 +157,7 @@ program
       task,
       maxSteps: parseInt(String(options?.maxSteps ?? DEFAULT_MAX_STEPS), 10),
       model: String(options?.model ?? defaultModel),
+      language: options?.language as string | undefined,
       deviceId: options?.device as string | undefined,
       successCriteria: options?.criteria as string[] | undefined,
       constraints: options?.constraint as string[] | undefined,
@@ -287,6 +289,7 @@ program
   .option('--app-file <path>', 'Path to .ipa file')
   .option('--driver-port <port>', 'Driver host port (default: 8100 for wda, 6001 for maestro)')
   .option('--runner <type>', 'Runner backend: maestro, maestro-runner, or wda')
+  .option('--language <lang>', 'Device UI language (e.g., "Traditional Chinese (繁體中文)")')
   .option('--criteria <criteria...>', 'Success criteria')
   .option('--constraint <constraints...>', 'Constraints')
   .action(async (bundleIdArg?: string, taskArg?: string, options?: Record<string, unknown>) => {
@@ -343,6 +346,7 @@ program
       task,
       maxSteps: parseInt(String(options?.maxSteps ?? DEFAULT_MAX_STEPS), 10),
       model: String(options?.model ?? defaultModel),
+      language: options?.language as string | undefined,
       deviceId: options?.device as string | undefined,
       successCriteria: options?.criteria as string[] | undefined,
       constraints: options?.constraint as string[] | undefined,

@@ -9,6 +9,7 @@ export interface TaskConfig {
   task: string;
   maxSteps: number;
   model?: string;
+  language?: string;
   successCriteria?: string[];
   constraints?: string[];
   deviceId?: string;
@@ -74,6 +75,7 @@ export interface AgentContext {
   stepNumber: number;
   maxSteps: number;
   actionHistory: string[];
+  language?: string;
   successCriteria?: string[];
   constraints?: string[];
 }

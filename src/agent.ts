@@ -163,14 +163,15 @@ export class TaskAgent {
       ? `CONSTRAINTS:\n${context.constraints.map((c, i) => `${i + 1}. ${c}`).join('\n')}`
       : '';
 
+    const languageSection = context.language
+      ? `IMPORTANT: The device UI language is ${context.language}.
+All labels, buttons, and menu items are in this language.
+When using tapText, always use the EXACT text visible on screen, not English translations.`
+      : '';
+
     return `You are an AI agent controlling a mobile app to complete a task.
 
-IMPORTANT: The device UI language is Traditional Chinese (繁體中文).
-All labels, buttons, and menu items are in Chinese. For example:
-- "Settings" → "設定", "General" → "一般", "About" → "關於本機"
-- "Search" → "搜尋", "Done" → "完成", "Cancel" → "取消"
-- "Back" → "返回", "Edit" → "編輯", "Delete" → "刪除"
-When using tapText, always use the CHINESE text visible on screen, not English translations.
+${languageSection}
 
 OBJECTIVE: ${task}
 

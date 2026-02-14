@@ -134,6 +134,7 @@ export class TaskExecutor {
             stepNumber: steps,
             maxSteps: this.config.maxSteps,
             actionHistory,
+            language: this.config.language,
             successCriteria: this.config.successCriteria,
             constraints: this.config.constraints,
           });
