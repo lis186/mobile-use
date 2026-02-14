@@ -15,9 +15,8 @@ import {
   isMaestroIosDeviceInstalled,
 } from './utils/install-maestro.js';
 import type { TaskConfig, RunnerType } from './types.js';
+import { inferProvider, getApiConfig as getApiConfigBase } from './cli/api-config.js';
 
-const DEFAULT_MODEL_GOOGLE = 'gemini-2.5-flash';
-const DEFAULT_MODEL_OPENAI = 'gpt-4o';
 const DEFAULT_MAX_STEPS = 100;
 
 // Handle graceful shutdown
@@ -26,11 +25,11 @@ let isShuttingDown = false;
 function setupSignalHandlers(): void {
   const shutdown = (signal: string) => {
     if (isShuttingDown) {
-      console.log(pc.red('\n\nForce quitting...'));
+      process.stderr.write('\n\nForce quitting...\n');
       process.exit(1);
     }
     isShuttingDown = true;
-    console.log(pc.yellow(`\n\n${signal} received. Shutting down gracefully...`));
+    process.stderr.write(`\n\n${signal} received. Shutting down gracefully...\n`);
     process.exit(0);
   };
 
@@ -50,44 +49,32 @@ function createSpinner(text: string): Ora {
   });
 }
 
-function inferProvider(model: string): 'google' | 'openai' | null {
-  if (/^(gpt-|o[1-9]|chatgpt-)/.test(model)) return 'openai';
-  if (/^gemini-/.test(model)) return 'google';
-  return null;
-}
-
+/** CLI wrapper for getApiConfig — adds pretty error messages and exits on failure */
 function getApiConfig(model?: string): { apiKey: string; provider: 'google' | 'openai'; defaultModel: string } {
-  const googleKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY;
-  const openaiKey = process.env.OPENAI_API_KEY;
+  // Check for model-specific provider mismatch first
+  if (model) {
+    const inferred = inferProvider(model);
+    if (inferred === 'openai' && !process.env.OPENAI_API_KEY) {
+      console.error(pc.red(`\n❌ Error: Model "${model}" requires OPENAI_API_KEY`));
+      process.exit(1);
+    }
+    if (inferred === 'google' && !process.env.GOOGLE_GENERATIVE_AI_API_KEY) {
+      console.error(pc.red(`\n❌ Error: Model "${model}" requires GOOGLE_GENERATIVE_AI_API_KEY`));
+      process.exit(1);
+    }
+  }
 
-  // If --model is specified, infer provider from model name
-  const inferred = model ? inferProvider(model) : null;
-  if (inferred === 'openai' && openaiKey) {
-    return { apiKey: openaiKey, provider: 'openai', defaultModel: model! };
-  }
-  if (inferred === 'google' && googleKey) {
-    return { apiKey: googleKey, provider: 'google', defaultModel: model! };
-  }
-  if (inferred && !openaiKey && !googleKey) {
-    console.error(pc.red(`\n❌ Error: Model "${model}" requires ${inferred === 'openai' ? 'OPENAI_API_KEY' : 'GOOGLE_GENERATIVE_AI_API_KEY'}`));
+  try {
+    return getApiConfigBase(model);
+  } catch {
+    console.error(pc.red('\n❌ Error: API key not found'));
+    console.log(pc.dim('\nSet one of the environment variables:'));
+    console.log(pc.dim('  GOOGLE_GENERATIVE_AI_API_KEY=your_key  (recommended, free tier available)'));
+    console.log(pc.dim('  OPENAI_API_KEY=your_key'));
+    console.log(pc.dim('\nGet your Google AI key from: https://aistudio.google.com/apikey'));
+    console.log(pc.dim('Get your OpenAI key from: https://platform.openai.com/api-keys\n'));
     process.exit(1);
   }
-
-  // Fallback: pick first available key
-  if (googleKey) {
-    return { apiKey: googleKey, provider: 'google', defaultModel: DEFAULT_MODEL_GOOGLE };
-  }
-  if (openaiKey) {
-    return { apiKey: openaiKey, provider: 'openai', defaultModel: DEFAULT_MODEL_OPENAI };
-  }
-
-  console.error(pc.red('\n❌ Error: API key not found'));
-  console.log(pc.dim('\nSet one of the environment variables:'));
-  console.log(pc.dim('  GOOGLE_GENERATIVE_AI_API_KEY=your_key  (recommended, free tier available)'));
-  console.log(pc.dim('  OPENAI_API_KEY=your_key'));
-  console.log(pc.dim('\nGet your Google AI key from: https://aistudio.google.com/apikey'));
-  console.log(pc.dim('Get your OpenAI key from: https://platform.openai.com/api-keys\n'));
-  process.exit(1);
 }
 
 // Create CLI program
@@ -295,6 +282,25 @@ program
       console.log(pc.yellow('⚠️  Some checks failed. Please fix the issues above.\n'));
       process.exit(1);
     }
+  });
+
+// MCP server command
+program
+  .command('mcp')
+  .description('Start MCP server for AI agent integration (stdio transport)')
+  .option('--runner <type>', 'Runner backend: maestro or wda (default: maestro)')
+  .option('--ios-device <udid>', 'Physical iOS device UDID')
+  .option('--team-id <id>', 'Apple Developer Team ID')
+  .option('--driver-port <port>', 'Driver host port (default: 8100 for wda, 6001 for maestro)')
+  .action(async (options: Record<string, unknown>) => {
+    const { startMcpServer } = await import('./mcp/server.js');
+    const runner = (options.runner as RunnerType) ?? 'maestro';
+    await startMcpServer({
+      runner,
+      iosDeviceUdid: options.iosDevice as string | undefined,
+      teamId: options.teamId as string | undefined,
+      driverPort: options.driverPort ? parseInt(String(options.driverPort), 10) : undefined,
+    });
   });
 
 program

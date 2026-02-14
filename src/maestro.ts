@@ -13,6 +13,7 @@ import * as os from 'os';
 import * as path from 'path';
 
 import type { RunnerType } from './types.js';
+import type { MobileDevice } from './core/device.js';
 
 export interface IosDeviceConfig {
   udid: string;
@@ -31,7 +32,7 @@ export interface MaestroConfig {
   runner?: RunnerType;
 }
 
-export class MaestroClient {
+export class MaestroClient implements MobileDevice {
   private bundleId?: string;
   private timeout: number;
   private saveEvalScreens: boolean;
@@ -286,7 +287,48 @@ export class MaestroClient {
     this.runFlow(yaml);
   }
 
-  async screenshot(stepNumber?: number): Promise<string> {
+  // ── MobileDevice interface methods ──────────────────────────
+
+  async connect(): Promise<void> {
+    // Maestro CLI is stateless — no persistent connection needed
+  }
+
+  async disconnect(): Promise<void> {
+    // Maestro CLI is stateless — nothing to clean up
+  }
+
+  isConnected(): boolean {
+    // Maestro is always "connected" (stateless CLI)
+    return true;
+  }
+
+  screenSize(): { width: number; height: number } {
+    // Maestro doesn't expose screen size; return common defaults
+    return { width: 390, height: 844 };
+  }
+
+  async screenshot(): Promise<Buffer> {
+    return this.captureScreenshot();
+  }
+
+  async accessibilityTree(): Promise<string> {
+    try {
+      const data = await this.hierarchy();
+      return JSON.stringify(data);
+    } catch {
+      return '';
+    }
+  }
+
+  // ── Screenshot implementation ──────────────────────────────
+
+  /** Screenshot as base64 string — used by executor/agent legacy path */
+  async screenshotBase64(stepNumber?: number): Promise<string> {
+    const buffer = await this.captureScreenshot(stepNumber);
+    return buffer.toString('base64');
+  }
+
+  private async captureScreenshot(stepNumber?: number): Promise<Buffer> {
     const timestamp = Date.now();
     const name = `screen-${timestamp}`;
     const tempDir = path.join(os.tmpdir(), `maestro-eval-${timestamp}`);
@@ -308,10 +350,8 @@ export class MaestroClient {
         cwd: tempDir,
       });
 
-      // Find screenshot: maestro saves in cwd, maestro-runner saves in reports/assets/
       let screenshotPath = path.join(tempDir, `${name}.png`);
       if (!existsSync(screenshotPath)) {
-        // maestro-runner stores screenshots in reports/assets/flow-NNN/
         screenshotPath = this.findScreenshotInReports(tempDir, name);
       }
 
@@ -323,7 +363,7 @@ export class MaestroClient {
         copyFileSync(screenshotPath, evalPath);
       }
 
-      return buffer.toString('base64');
+      return buffer;
     } catch (error: unknown) {
       const err = error as { message?: string };
       throw new Error(`Screenshot failed: ${(err.message || 'Unknown error').slice(0, 300)}`);
@@ -396,12 +436,8 @@ export class MaestroClient {
     }
   }
 
+  /** @deprecated Use accessibilityTree() instead */
   async getAccessibilityTree(): Promise<string> {
-    try {
-      const data = await this.hierarchy();
-      return JSON.stringify(data);
-    } catch {
-      return '';
-    }
+    return this.accessibilityTree();
   }
 }

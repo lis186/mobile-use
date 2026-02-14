@@ -115,7 +115,7 @@ export class TaskExecutor {
         let screenshot: string;
 
         try {
-          screenshot = await this.maestro.screenshot(steps);
+          screenshot = await this.maestro.screenshotBase64(steps);
           observeSpinner.succeed('Screen captured');
         } catch (error) {
           observeSpinner.fail('Screenshot failed');
@@ -128,7 +128,7 @@ export class TaskExecutor {
         // Fetch accessibility tree (fail-open: continue without it)
         let accessibilityTree: string | undefined;
         try {
-          const rawTree = await this.maestro.getAccessibilityTree();
+          const rawTree = await this.maestro.accessibilityTree();
           accessibilityTree = rawTree || undefined;
         } catch {
           // Tree fetch failed — continue with screenshot-only

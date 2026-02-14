@@ -9,6 +9,7 @@
 import { spawn, execFileSync, type ChildProcess } from 'child_process';
 import { writeFileSync, mkdirSync } from 'fs';
 import * as path from 'path';
+import type { MobileDevice } from './core/device.js';
 
 export interface WDAConfig {
   udid: string;
@@ -20,7 +21,7 @@ export interface WDAConfig {
   evalScreensDir?: string;
 }
 
-export class WDAClient {
+export class WDAClient implements MobileDevice {
   private udid: string;
   private teamId: string;
   private bundleId?: string;
@@ -54,10 +55,10 @@ export class WDAClient {
   async start(): Promise<void> {
     // Check if WDA is already running (externally managed)
     if (await this.checkRunning()) {
-      console.log(`[WDA] Already running — connecting to existing instance on port ${this.port}`);
+      process.stderr.write(`[WDA] Already running — connecting to existing instance on port ${this.port}\n`);
       await this.createSession();
       await this.fetchScreenSize();
-      console.log(`[WDA] Connected — session=${this.sessionId}, screen=${this.screenWidth}x${this.screenHeight}`);
+      process.stderr.write(`[WDA] Connected — session=${this.sessionId}, screen=${this.screenWidth}x${this.screenHeight}\n`);
       return;
     }
 
@@ -65,7 +66,7 @@ export class WDAClient {
     this.managedProcesses = true;
     this.killLeftovers();
 
-    console.log(`[WDA] Starting xcodebuild + iproxy on port ${this.port}...`);
+    process.stderr.write(`[WDA] Starting xcodebuild + iproxy on port ${this.port}...\n`);
 
     // Start iproxy: forward localhost:port → device:8100
     this.iproxyProc = spawn('iproxy', [String(this.port), '8100', '-u', this.udid], {
@@ -105,11 +106,11 @@ export class WDAClient {
     this.exitHandler = () => this.syncCleanup();
     process.on('exit', this.exitHandler);
 
-    console.log(`[WDA] Ready — session=${this.sessionId}, screen=${this.screenWidth}x${this.screenHeight}`);
+    process.stderr.write(`[WDA] Ready — session=${this.sessionId}, screen=${this.screenWidth}x${this.screenHeight}\n`);
   }
 
   async stop(): Promise<void> {
-    console.log('[WDA] Stopping...');
+    process.stderr.write('[WDA] Stopping...\n');
     if (this.sessionId) {
       try {
         await this.wdaFetch(`/session/${this.sessionId}`, { method: 'DELETE' });
@@ -125,7 +126,7 @@ export class WDAClient {
       }
       this.syncCleanup();
     }
-    console.log('[WDA] Stopped');
+    process.stderr.write('[WDA] Stopped\n');
   }
 
   /** Synchronous cleanup — safe to call from process 'exit' handler */
@@ -432,7 +433,37 @@ export class WDAClient {
     await sleep(timeout);
   }
 
-  async screenshot(stepNumber?: number): Promise<string> {
+  // ── MobileDevice interface methods ──────────────────────────
+
+  async connect(): Promise<void> {
+    return this.start();
+  }
+
+  async disconnect(): Promise<void> {
+    return this.stop();
+  }
+
+  isConnected(): boolean {
+    return this.sessionId !== null;
+  }
+
+  screenSize(): { width: number; height: number } {
+    return { width: this.screenWidth, height: this.screenHeight };
+  }
+
+  async screenshot(): Promise<Buffer> {
+    if (!this.sessionId) throw new Error('[WDA] No active session');
+
+    const resp = await this.sessionFetch('/screenshot');
+    const data = (await resp.json()) as { value?: string };
+    const base64 = data.value;
+    if (!base64) throw new Error('[WDA] Screenshot returned no data');
+
+    return Buffer.from(base64, 'base64');
+  }
+
+  /** Screenshot as base64 string — used by executor/agent legacy path */
+  async screenshotBase64(stepNumber?: number): Promise<string> {
     if (!this.sessionId) throw new Error('[WDA] No active session');
 
     const resp = await this.sessionFetch('/screenshot');
@@ -452,14 +483,15 @@ export class WDAClient {
     return base64;
   }
 
-  async source(): Promise<string> {
+  async accessibilityTree(): Promise<string> {
     const resp = await this.sessionFetch('/source');
     const data = (await resp.json()) as { value?: string };
     return data.value ?? '';
   }
 
+  /** @deprecated Use accessibilityTree() instead */
   async getAccessibilityTree(): Promise<string> {
-    return this.source();
+    return this.accessibilityTree();
   }
 
   // ── Element Finding ───────────────────────────────────────

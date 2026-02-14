@@ -136,18 +136,30 @@ mobile-use com.example.app "task" --device emulator-5554
 
 ### Physical iOS Device
 
+**WDA runner (recommended)** - Direct WebDriverAgent communication, no bridge process needed:
+
+```bash
+# Get your device info
+xcrun xctrace list devices                              # Get UDID
+security find-identity -v -p codesigning | grep "Dev"   # Get Team ID
+
+# Run with WDA runner (fastest)
+mobile-use com.example.app "Create a note" \
+  --runner wda \
+  --ios-device DEVICE_UDID \
+  --team-id YOUR_TEAM_ID
+```
+
+**Maestro runner** - Uses maestro-ios-device bridge:
+
 ```bash
 # 1. Install the iOS device bridge
 mobile-use install-ios-device
 
-# 2. Get your device info
-xcrun xctrace list devices                              # Get UDID
-security find-identity -v -p codesigning | grep "Dev"   # Get Team ID
-
-# 3. Start the bridge (keep running in separate terminal)
+# 2. Start the bridge (keep running in separate terminal)
 maestro-ios-device --team-id YOUR_TEAM_ID --device DEVICE_UDID
 
-# 4. Run mobile-use
+# 3. Run mobile-use
 mobile-use com.example.app "Create a note" \
   --ios-device DEVICE_UDID \
   --team-id YOUR_TEAM_ID \
@@ -160,6 +172,7 @@ mobile-use com.example.app "Create a note" \
 |---------|-------------|
 | `mobile-use <bundleId> <task>` | Run a task on the specified app |
 | `mobile-use run <bundleId> <task>` | Same as above (explicit run command) |
+| `mobile-use mcp` | Start MCP server for AI agent integration (stdio) |
 | `mobile-use check` | Verify environment is properly configured |
 | `mobile-use install-maestro` | Install Maestro CLI |
 | `mobile-use install-ios-device` | Install maestro-ios-device (macOS only) |
@@ -287,6 +300,60 @@ mobile-use com.myapp.test "Complete the signup flow" \
   --constraint "Use email: test@example.com" \
   --constraint "Skip optional fields"
 ```
+
+## MCP Server (AI Agent Integration)
+
+mobile-use can run as an [MCP (Model Context Protocol)](https://modelcontextprotocol.io) server, letting AI agents like Claude control your mobile device directly through tool calls.
+
+### Quick Start
+
+```bash
+# Start MCP server with WDA runner (physical iOS device)
+mobile-use mcp --runner wda --ios-device DEVICE_UDID --team-id YOUR_TEAM_ID
+
+# Start MCP server with Maestro runner (simulator)
+mobile-use mcp --runner maestro
+```
+
+### Claude Code Integration
+
+Add to your project's `.mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "mobile-use": {
+      "command": "npx",
+      "args": ["tsx", "/path/to/mobile-use/src/index.ts", "mcp",
+               "--runner", "wda",
+               "--ios-device", "DEVICE_UDID",
+               "--team-id", "YOUR_TEAM_ID"]
+    }
+  }
+}
+```
+
+Once configured, Claude can use 16 tools to interact with your device:
+
+| Category | Tools |
+|----------|-------|
+| Observation | `screenshot`, `accessibility_tree` |
+| Actions | `tap`, `tap_text`, `input_text`, `erase_text`, `scroll`, `swipe`, `back`, `hide_keyboard`, `open_link`, `press_key` |
+| App Management | `launch_app`, `stop_app`, `device_info` |
+| Automation | `run_task` (delegates to the autonomous AI agent loop) |
+
+### MCP Options
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--runner <type>` | Runner backend: `maestro` or `wda` | `maestro` |
+| `--ios-device <udid>` | Physical iOS device UDID | - |
+| `--team-id <id>` | Apple Developer Team ID | - |
+| `--driver-port <port>` | Driver host port | `8100` (wda) / `6001` (maestro) |
+
+### Architecture
+
+The MCP server uses **lazy device connection** (connects on first tool call, not at startup), **persistent sessions** (reuses the WDA/Maestro session across all tool calls), and **retry-on-stale** (auto-reconnects if a session expires). All device logs go to stderr, keeping stdout clean for JSON-RPC.
 
 ## Performance Optimizations
 

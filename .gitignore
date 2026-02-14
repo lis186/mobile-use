@@ -40,3 +40,16 @@ eval-screens/
 # Coverage
 coverage/
 .nyc_output/
+
+# Local configs
+.mcp.json
+.claude/
+
+# Test artifacts
+*.png
+reports/
+simple-test.yaml
+test-flow.yaml
+
+# Third-party drivers
+drivers/
