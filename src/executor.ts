@@ -175,7 +175,7 @@ export class TaskExecutor {
           actionHistory.push('error');
         }
 
-        await sleep(1500);
+        await sleep(this.getPostActionDelay(decision.action));
       }
 
       console.log(pc.yellow('\n⏱️ Max steps reached'));
@@ -185,6 +185,22 @@ export class TaskExecutor {
       if (this.maestro instanceof WDAClient) {
         await this.maestro.stop();
       }
+    }
+  }
+
+  private getPostActionDelay(action: string): number {
+    switch (action) {
+      case 'launchApp':
+      case 'stopApp':
+        return 3000;
+      case 'inputText':
+      case 'scroll':
+      case 'swipe':
+        return 800;
+      case 'wait':
+        return 0; // wait action handles its own delay
+      default:
+        return 500;
     }
   }
 
