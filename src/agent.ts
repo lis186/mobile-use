@@ -1,6 +1,7 @@
 import { createOpenAI } from '@ai-sdk/openai';
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { generateText, type ModelMessage, type LanguageModel } from 'ai';
+import sharp from 'sharp';
 import type { AgentDecision, AgentContext } from './types.js';
 
 type AIProvider = 'google' | 'openai';
@@ -36,7 +37,8 @@ export class TaskAgent {
     context: AgentContext
   ): Promise<AgentDecision> {
     const systemPrompt = this.buildSystemPrompt(task, context);
-    const imageBuffer = Buffer.from(screenshot, 'base64');
+    const rawBuffer = Buffer.from(screenshot, 'base64');
+    const imageBuffer = await this.optimizeImage(rawBuffer);
 
     const stuckWarning = this.detectStuckPattern(context.actionHistory);
 
@@ -76,6 +78,28 @@ export class TaskAgent {
     }
 
     return JSON.parse(jsonMatch[0]) as AgentDecision;
+  }
+
+  private async optimizeImage(buffer: Buffer): Promise<Buffer> {
+    const metadata = await sharp(buffer).metadata();
+    const origW = metadata.width ?? 0;
+    const origH = metadata.height ?? 0;
+    const origSize = buffer.length;
+
+    // Resize to ~1/2 and convert to JPEG
+    const targetWidth = Math.round(origW / 2);
+    const optimized = await sharp(buffer)
+      .resize(targetWidth)
+      .jpeg({ quality: 80 })
+      .toBuffer();
+
+    const ratio = ((1 - optimized.length / origSize) * 100).toFixed(0);
+    console.log(
+      `  📐 Image: ${origW}x${origH} → ${targetWidth}x${Math.round(origH / 2)} ` +
+      `(${(origSize / 1024).toFixed(0)}KB → ${(optimized.length / 1024).toFixed(0)}KB, -${ratio}%)`
+    );
+
+    return optimized;
   }
 
   private detectStuckPattern(history: string[]): string | null {
