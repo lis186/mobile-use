@@ -163,7 +163,7 @@ export class XCTestClient implements MobileDevice {
     if (!existsSync(projectPath)) {
       throw new Error(
         '[XCTest] Cannot find maestro-driver-ios project. ' +
-        'Install Maestro first (mobile-use install-maestro) or provide --xctestrun-path'
+        'Install Maestro first (phone-use install-maestro) or provide --xctestrun-path'
       );
     }
 

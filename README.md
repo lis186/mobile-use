@@ -1,20 +1,20 @@
-# 📱 mobile-use
+# 📱 phone-use
 
 **AI-powered mobile task automation using natural language**
 
-Introducing the Claude Computer Use for *Mobile Apps*. Execute complex tasks on mobile apps by simply describing what you want to do. mobile-use uses GPT-5.2 Pro vision to see your screen and Maestro to control the device.
+Execute complex tasks on mobile apps by simply describing what you want to do. phone-use uses Vision AI to see your screen and automation backends (Maestro/WDA/XCTest) to control the device.
 
 **[Demo Video](https://drive.google.com/file/d/114EcATHluSHBV1mOlnM5uq7-Ob-TosY9/view)**
 
 ```bash
-mobile-use com.apple.mobilenotes "Create a new note titled 'Meeting Notes' with bullet points for agenda items"
+phone-use com.apple.mobilenotes "Create a new note titled 'Meeting Notes' with bullet points for agenda items"
 ```
 
 ## How It Works
 
 ```
 ┌─────────────────┐     ┌────────────────┐     ┌─────────────────┐
-│   mobile-use    │────▶│   GPT-5.2 Pro  │────▶│    Maestro      │
+│   phone-use    │────▶│   Vision AI    │────▶│    Maestro      │
 │   (CLI/Node)    │     │  (Vision AI)   │     │   (Automation)  │
 └─────────────────┘     └────────────────┘     └─────────────────┘
         │                      │                      │
@@ -31,16 +31,16 @@ mobile-use com.apple.mobilenotes "Create a new note titled 'Meeting Notes' with 
 
 **Loop:**
 1. **Observe** - Take a screenshot of the current screen
-2. **Decide** - GPT-4o analyzes the image and decides the next action
+2. **Decide** - Vision AI analyzes the image and decides the next action
 3. **Execute** - Maestro performs the action on the device
 4. **Repeat** - Until task is complete or max steps reached
 
-##### Why use GPT 5.2?
-GPT 5.2 has the highest recorded [ScreenSpot Pro](https://llm-stats.com/benchmarks/screenspot-pro) score of 86.3%. This is critical for analysis as we need to ensure we get the highest accurate coordinates for completing commands as well as critically understanding what's going on in a screen.
+##### Why Vision AI?
+phone-use supports multiple vision-capable models (Gemini, GPT, etc.) that can accurately identify UI elements and coordinates from screenshots.
 
 ## Features
 
-- **Vision-First AI** - Uses GPT-4o to understand screenshots and decide actions
+- **Vision-First AI** - Uses Vision AI to understand screenshots and decide actions
 - **Natural Language Tasks** - Describe what you want in plain English
 - **Cross-Platform** - Works with iOS simulators and Android devices/emulators
 - **Physical iOS Devices** - Supports real iPhones via `maestro-ios-device`
@@ -52,8 +52,8 @@ GPT 5.2 has the highest recorded [ScreenSpot Pro](https://llm-stats.com/benchmar
 
 - **Node.js** 18+
 - **macOS** (for iOS) or **macOS/Linux/Windows** (for Android)
-- **OpenAI API Key** with GPT-5.2 Pro access
-- **Maestro CLI** (auto-installed via `mobile-use install-maestro`)
+- **AI API Key** (Google Gemini recommended, OpenAI also supported)
+- **Maestro CLI** (auto-installed via `phone-use install-maestro`)
 
 ### For iOS Simulator
 - Xcode with iOS Simulator
@@ -66,13 +66,13 @@ GPT 5.2 has the highest recorded [ScreenSpot Pro](https://llm-stats.com/benchmar
 ### For Physical iOS Devices
 - macOS with Xcode
 - Apple Developer account (free tier works)
-- `maestro-ios-device` (install via `mobile-use install-ios-device`)
+- `maestro-ios-device` (install via `phone-use install-ios-device`)
 
 ## Installation
 
 ```bash
 # Install by Cloning
-git clone https://github.com/31Carlton7/mobile-use
+git clone https://github.com/lis186/phone-use
 
 # Set your OpenAI API key
 export OPENAI_API_KEY=your_api_key_here
@@ -83,10 +83,10 @@ npm run build
 npm link
 
 # Install Maestro CLI
-mobile-use install-maestro
+phone-use install-maestro
 
 # Verify installation
-mobile-use check
+phone-use check
 ```
 
 ## Usage
@@ -95,13 +95,13 @@ mobile-use check
 
 ```bash
 # Run a task on a specific app
-mobile-use <bundleId> "<task>"
+phone-use <bundleId> "<task>"
 
 # Example: Create a note
-mobile-use com.apple.mobilenotes "Create a new note titled 'Hello World'"
+phone-use com.apple.mobilenotes "Create a new note titled 'Hello World'"
 
 # Example: Send a message
-mobile-use com.apple.MobileSMS "Send 'Running late!' to John"
+phone-use com.apple.MobileSMS "Send 'Running late!' to John"
 ```
 
 ### Without Bundle ID (Foreground App)
@@ -110,16 +110,16 @@ Run tasks on whatever app is currently visible:
 
 ```bash
 # Using --task flag
-mobile-use --task "Tap the settings icon"
+phone-use --task "Tap the settings icon"
 
 # Or just pass the task directly
-mobile-use "Scroll down and tap on Privacy"
+phone-use "Scroll down and tap on Privacy"
 ```
 
 ### With Custom Options
 
 ```bash
-mobile-use com.example.app "Complete the checkout flow" \
+phone-use com.example.app "Complete the checkout flow" \
   --max-steps 50 \
   --model gpt-4o \
   --criteria "Order confirmation is visible" \
@@ -133,7 +133,7 @@ mobile-use com.example.app "Complete the checkout flow" \
 adb devices
 
 # Run on specific device/emulator
-mobile-use com.example.app "task" --device emulator-5554
+phone-use com.example.app "task" --device emulator-5554
 ```
 
 ### Physical iOS Device
@@ -146,7 +146,7 @@ xcrun xctrace list devices                              # Get UDID
 security find-identity -v -p codesigning | grep "Dev"   # Get Team ID
 
 # Run with WDA runner (fastest)
-mobile-use com.example.app "Create a note" \
+phone-use com.example.app "Create a note" \
   --runner wda \
   --ios-device DEVICE_UDID \
   --team-id YOUR_TEAM_ID
@@ -156,13 +156,13 @@ mobile-use com.example.app "Create a note" \
 
 ```bash
 # 1. Install the iOS device bridge
-mobile-use install-ios-device
+phone-use install-ios-device
 
 # 2. Start the bridge (keep running in separate terminal)
 maestro-ios-device --team-id YOUR_TEAM_ID --device DEVICE_UDID
 
-# 3. Run mobile-use
-mobile-use com.example.app "Create a note" \
+# 3. Run phone-use
+phone-use com.example.app "Create a note" \
   --ios-device DEVICE_UDID \
   --team-id YOUR_TEAM_ID \
   --app-file /path/to/app.ipa
@@ -172,13 +172,13 @@ mobile-use com.example.app "Create a note" \
 
 | Command | Description |
 |---------|-------------|
-| `mobile-use <bundleId> <task>` | Run a task on the specified app |
-| `mobile-use run <bundleId> <task>` | Same as above (explicit run command) |
-| `mobile-use mcp` | Start MCP server for AI agent integration (stdio) |
-| `mobile-use check` | Verify environment is properly configured |
-| `mobile-use install-maestro` | Install Maestro CLI |
-| `mobile-use install-ios-device` | Install maestro-ios-device (macOS only) |
-| `mobile-use --help` | Show help information |
+| `phone-use <bundleId> <task>` | Run a task on the specified app |
+| `phone-use run <bundleId> <task>` | Same as above (explicit run command) |
+| `phone-use mcp` | Start MCP server for AI agent integration (stdio) |
+| `phone-use check` | Verify environment is properly configured |
+| `phone-use install-maestro` | Install Maestro CLI |
+| `phone-use install-ios-device` | Install maestro-ios-device (macOS only) |
+| `phone-use --help` | Show help information |
 
 ## Options
 
@@ -250,7 +250,7 @@ The WDA (WebDriverAgent) runner communicates directly with Apple's WebDriverAgen
 
 ```bash
 # One command — WDA is built and launched automatically
-mobile-use com.apple.mobilenotes "Create a note" \
+phone-use com.apple.mobilenotes "Create a note" \
   --runner wda \
   --ios-device DEVICE_UDID \
   --team-id YOUR_TEAM_ID
@@ -264,13 +264,13 @@ Uses the `maestro-ios-device` XCTest bridge. **Does not work with iOS 26+ / Xcod
 
 ```bash
 # 1. Install the iOS device bridge
-mobile-use install-ios-device
+phone-use install-ios-device
 
 # 2. Start the bridge (keep running in separate terminal)
 maestro-ios-device --team-id YOUR_TEAM_ID --device DEVICE_UDID
 
-# 3. Run mobile-use
-mobile-use com.example.app "Create a note" \
+# 3. Run phone-use
+phone-use com.example.app "Create a note" \
   --ios-device DEVICE_UDID \
   --team-id YOUR_TEAM_ID
 ```
@@ -290,27 +290,27 @@ mobile-use com.example.app "Create a note" \
 
 ### E-commerce Checkout
 ```bash
-mobile-use com.amazon.Amazon "Search for 'wireless headphones', add the first result to cart, and proceed to checkout"
+phone-use com.amazon.Amazon "Search for 'wireless headphones', add the first result to cart, and proceed to checkout"
 ```
 
 ### Social Media
 ```bash
-mobile-use com.instagram.instagram "Post the most recent photo from my camera roll with the caption 'Beautiful sunset!'"
+phone-use com.instagram.instagram "Post the most recent photo from my camera roll with the caption 'Beautiful sunset!'"
 ```
 
 ### Productivity
 ```bash
-mobile-use com.apple.mobilenotes "Create a new note titled 'Shopping List' with items: milk, eggs, bread, butter"
+phone-use com.apple.mobilenotes "Create a new note titled 'Shopping List' with items: milk, eggs, bread, butter"
 ```
 
 ### Multi-App Workflow
 ```bash
-mobile-use com.apple.mobilesafari "Copy the headline from cnn.com, then open Notes and paste it into a new note"
+phone-use com.apple.mobilesafari "Copy the headline from cnn.com, then open Notes and paste it into a new note"
 ```
 
 ### Testing with Constraints
 ```bash
-mobile-use com.myapp.test "Complete the signup flow" \
+phone-use com.myapp.test "Complete the signup flow" \
   --criteria "Welcome screen is displayed" \
   --criteria "User profile shows correct email" \
   --constraint "Use email: test@example.com" \
@@ -319,19 +319,19 @@ mobile-use com.myapp.test "Complete the signup flow" \
 
 ## MCP Server (AI Agent Integration)
 
-mobile-use can run as an [MCP (Model Context Protocol)](https://modelcontextprotocol.io) server, letting AI agents like Claude control your mobile device directly through tool calls.
+phone-use can run as an [MCP (Model Context Protocol)](https://modelcontextprotocol.io) server, letting AI agents like Claude control your mobile device directly through tool calls.
 
 ### Quick Start
 
 ```bash
 # Start MCP server with WDA runner (physical iOS device)
-mobile-use mcp --runner wda --ios-device DEVICE_UDID --team-id YOUR_TEAM_ID
+phone-use mcp --runner wda --ios-device DEVICE_UDID --team-id YOUR_TEAM_ID
 
 # Start MCP server with XCTest runner (iOS simulator, including iOS 26+)
-mobile-use mcp --runner xctest --device SIMULATOR_UDID
+phone-use mcp --runner xctest --device SIMULATOR_UDID
 
 # Start MCP server with Maestro runner (simulator, iOS 18.x or earlier)
-mobile-use mcp --runner maestro
+phone-use mcp --runner maestro
 ```
 
 ### Claude Code Integration
@@ -341,9 +341,9 @@ Add to your project's `.mcp.json`:
 ```json
 {
   "mcpServers": {
-    "mobile-use": {
+    "phone-use": {
       "command": "npx",
-      "args": ["tsx", "/path/to/mobile-use/src/index.ts", "mcp",
+      "args": ["tsx", "/path/to/phone-use/src/index.ts", "mcp",
                "--runner", "wda",
                "--ios-device", "DEVICE_UDID",
                "--team-id", "YOUR_TEAM_ID"]
@@ -378,7 +378,7 @@ The MCP server uses **lazy device connection** (connects on first tool call, not
 
 ## Performance Optimizations
 
-mobile-use includes several optimizations to reduce cost, improve speed, and increase reliability:
+phone-use includes several optimizations to reduce cost, improve speed, and increase reliability:
 
 ### Screenshot Compression
 
@@ -410,7 +410,7 @@ This reduces per-step overhead by **30-60%** for tap-heavy workflows.
 Use the `--language` flag to tell the AI model what language the device UI is in. This prevents the model from trying English text (e.g., "General") when the device shows localized text (e.g., "一般").
 
 ```bash
-mobile-use com.apple.Preferences "Go to General" --language zh-TW
+phone-use com.apple.Preferences "Go to General" --language zh-TW
 ```
 
 Supported codes: `zh-TW`, `zh-CN`, `ja`, `ko`, `en`, `es`, `fr`, `de`, `pt`, `th`, `vi`, `ar`. Any other value is passed through as-is.
@@ -423,12 +423,12 @@ The `xctest` runner connects directly to the Maestro XCTest driver's REST API on
 
 ```bash
 # Basic usage — auto-builds and starts the XCTest driver
-mobile-use com.apple.mobilesafari "Search for hello" \
+phone-use com.apple.mobilesafari "Search for hello" \
   --runner xctest \
   --device SIMULATOR_UDID
 
 # With a custom xctestrun file
-mobile-use com.apple.mobilesafari "Search for hello" \
+phone-use com.apple.mobilesafari "Search for hello" \
   --runner xctest \
   --device SIMULATOR_UDID \
   --xctestrun-path /path/to/maestro-driver-ios.xctestrun
@@ -444,7 +444,7 @@ mobile-use com.apple.mobilesafari "Search for hello" \
 
 ### Prerequisites
 
-- Maestro CLI installed (`mobile-use install-maestro`) — needed for the XCTest driver source
+- Maestro CLI installed (`phone-use install-maestro`) — needed for the XCTest driver source
 - Xcode with a booted iOS simulator
 - The driver is auto-built on first run (~1-2 min). Subsequent runs reuse the built artifacts.
 
@@ -452,7 +452,7 @@ mobile-use com.apple.mobilesafari "Search for hello" \
 
 ### "Maestro not installed"
 ```bash
-mobile-use install-maestro
+phone-use install-maestro
 # Then add to PATH:
 export PATH="$PATH:$HOME/.maestro/bin"
 ```
@@ -508,7 +508,7 @@ The `xctest` runner connects directly to the Maestro XCTest driver's REST API, b
 xcrun simctl list devices booted
 
 # Run with xctest runner
-mobile-use com.example.app "Your task" \
+phone-use com.example.app "Your task" \
   --runner xctest \
   --device SIMULATOR_UDID
 ```
@@ -520,7 +520,7 @@ The XCTest driver is auto-built on first run from `~/.maestro/maestro-ios-xctest
 The WDA runner uses Apple's own WebDriverAgent framework, which has forward compatibility with new iOS versions:
 
 ```bash
-mobile-use com.example.app "Your task" \
+phone-use com.example.app "Your task" \
   --runner wda \
   --ios-device DEVICE_UDID \
   --team-id YOUR_TEAM_ID
@@ -539,7 +539,7 @@ xcrun simctl create "iPhone 16 Pro" "iPhone 16 Pro" iOS-18-4
 
 # Boot and use it
 xcrun simctl boot "iPhone 16 Pro"
-mobile-use com.example.app "Your task" --runner maestro
+phone-use com.example.app "Your task" --runner maestro
 ```
 
 **Why Maestro CLI doesn't work on iOS 26:**
@@ -562,7 +562,7 @@ MIT
 ## Acknowledgments
 
 - [Maestro](https://maestro.mobile.dev) - Mobile UI automation framework
-- [OpenAI GPT-5.2 Pro](https://openai.com) - Vision-language model
+- [Google Gemini](https://aistudio.google.com) / [OpenAI](https://openai.com) - Vision-language models
 - [maestro-ios-device](https://github.com/devicelab-dev/maestro-ios-device) - Physical iOS device support
 
-*In God we trust🙏🏿*
+Originally forked from [31Carlton7/mobile-use](https://github.com/31Carlton7/mobile-use).

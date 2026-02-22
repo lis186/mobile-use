@@ -1,12 +1,12 @@
 {
-  "name": "mobile-use",
+  "name": "phone-use",
   "version": "1.0.0",
-  "description": "AI-powered mobile task automation using Maestro and Gemini",
+  "description": "AI-powered mobile task automation using natural language",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "bin": {
-    "mobile-use": "./dist/index.js"
+    "phone-use": "./dist/index.js"
   },
   "files": [
     "dist",
@@ -32,7 +32,7 @@
     "testing",
     "automation"
   ],
-  "author": "",
+  "author": "Justin Lee",
   "license": "MIT",
   "engines": {
     "node": ">=18.0.0"

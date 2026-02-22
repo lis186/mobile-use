@@ -1,6 +1,6 @@
 ## Context
 
-mobile-use is a Node.js/TypeScript CLI tool that automates mobile apps via natural language. It currently has two device backends (`WDAClient` for real iOS devices, `MaestroClient` for simulators via Maestro CLI) tightly coupled with a CLI frontend (spinners, formatted output) and an autonomous AI agent loop.
+phone-use is a Node.js/TypeScript CLI tool that automates mobile apps via natural language. It currently has two device backends (`WDAClient` for real iOS devices, `MaestroClient` for simulators via Maestro CLI) tightly coupled with a CLI frontend (spinners, formatted output) and an autonomous AI agent loop.
 
 The project uses ESM modules, Commander for CLI, and builds with tsup. It already has `zod` (for schema validation) and supports both Google and OpenAI AI providers.
 
@@ -15,7 +15,7 @@ Key constraint: WDA sessions are stateful and expensive to start (~15s). The MCP
 - Maintain persistent device sessions across tool calls (connect once, use many times)
 - Extract a `MobileDevice` interface so backends are swappable (WDA, Maestro, future ADB/simctl)
 - Keep the existing `run` CLI command working unchanged
-- Single npm package: `npx mobile-use run ...` and `npx mobile-use mcp ...`
+- Single npm package: `npx phone-use run ...` and `npx phone-use mcp ...`
 
 **Non-Goals:**
 

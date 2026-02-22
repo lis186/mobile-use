@@ -1,5 +1,5 @@
 /**
- * Type definitions for mobile-use
+ * Type definitions for phone-use
  */
 
 export type RunnerType = 'maestro' | 'maestro-runner' | 'wda' | 'xctest';

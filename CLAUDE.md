@@ -31,7 +31,7 @@ npx tsx src/index.ts run <bundleId> --task "..." --runner <runner>
 
 ### WDA Runner for Physical Devices
 
-WDA must be running before `mobile-use`. It does NOT auto-start.
+WDA must be running before `phone-use`. It does NOT auto-start.
 
 ```bash
 # 1. Build WDA (once per Xcode version)

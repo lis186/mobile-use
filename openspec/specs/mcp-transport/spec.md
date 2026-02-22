@@ -1,18 +1,18 @@
 ## ADDED Requirements
 
 ### Requirement: MCP server starts via CLI subcommand
-The system SHALL provide a `mobile-use mcp` CLI subcommand that starts an MCP server using stdio transport (JSON-RPC over stdin/stdout).
+The system SHALL provide a `phone-use mcp` CLI subcommand that starts an MCP server using stdio transport (JSON-RPC over stdin/stdout).
 
 #### Scenario: Start MCP server with default settings
-- **WHEN** user runs `mobile-use mcp`
+- **WHEN** user runs `phone-use mcp`
 - **THEN** the server starts on stdio transport and outputs MCP initialization handshake
 
 #### Scenario: Start MCP server with device flags
-- **WHEN** user runs `mobile-use mcp --runner wda --ios-device <udid> --team-id <id>`
+- **WHEN** user runs `phone-use mcp --runner wda --ios-device <udid> --team-id <id>`
 - **THEN** the server starts and uses these as default device connection parameters for subsequent tool calls
 
 #### Scenario: Configure in Claude Code
-- **WHEN** user adds `{"mcpServers": {"mobile-use": {"command": "npx", "args": ["mobile-use", "mcp", "--runner", "wda", "--ios-device", "<udid>", "--team-id", "<id>"]}}}` to their MCP config
+- **WHEN** user adds `{"mcpServers": {"phone-use": {"command": "npx", "args": ["phone-use", "mcp", "--runner", "wda", "--ios-device", "<udid>", "--team-id", "<id>"]}}}` to their MCP config
 - **THEN** Claude Code launches the MCP server as a child process and discovers all available tools
 
 ### Requirement: Lazy device connection

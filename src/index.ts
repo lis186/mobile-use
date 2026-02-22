@@ -80,7 +80,7 @@ function getApiConfig(model?: string): { apiKey: string; provider: 'google' | 'o
 // Create CLI program
 const program = new Command();
 
-program.name('mobile-use').description('AI-powered mobile task automation using Maestro and OpenAI').version('1.0.0').enablePositionalOptions();
+program.name('phone-use').description('AI-powered mobile task automation using Maestro and OpenAI').version('1.0.0').enablePositionalOptions();
 
 program
   .command('run')
@@ -105,7 +105,7 @@ program
 
     if (runner === 'maestro' && !isMaestroInstalled()) {
       console.log(pc.yellow('\n⚠️  Maestro is not installed.'));
-      console.log(pc.dim('Run: mobile-use install-maestro\n'));
+      console.log(pc.dim('Run: phone-use install-maestro\n'));
       process.exit(1);
     }
 
@@ -127,9 +127,9 @@ program
     if (!task) {
       console.error(pc.red('\n❌ Error: Task is required'));
       console.log(pc.dim('\nUsage:'));
-      console.log(pc.dim('  mobile-use run <bundleId> <task>'));
-      console.log(pc.dim('  mobile-use run --task "your task"'));
-      console.log(pc.dim('  mobile-use run "your task"'));
+      console.log(pc.dim('  phone-use run <bundleId> <task>'));
+      console.log(pc.dim('  phone-use run --task "your task"'));
+      console.log(pc.dim('  phone-use run "your task"'));
       process.exit(1);
     }
 
@@ -143,23 +143,23 @@ program
       if (!options?.device && !iosDeviceUdid) {
         console.error(pc.red('\n❌ Error: --runner xctest requires --device <simulator-udid>'));
         console.log(pc.dim('\nUsage:'));
-        console.log(pc.dim('  mobile-use run <bundleId> <task> --device <sim-udid> --runner xctest'));
-        console.log(pc.dim('  mobile-use run <bundleId> <task> --device <sim-udid> --runner xctest --xctestrun-path /path/to/file.xctestrun'));
+        console.log(pc.dim('  phone-use run <bundleId> <task> --device <sim-udid> --runner xctest'));
+        console.log(pc.dim('  phone-use run <bundleId> <task> --device <sim-udid> --runner xctest --xctestrun-path /path/to/file.xctestrun'));
         process.exit(1);
       }
     } else if (runner === 'wda') {
       if (!iosDeviceUdid || !teamId) {
         console.error(pc.red('\n❌ Error: --runner wda requires --ios-device and --team-id'));
         console.log(pc.dim('\nUsage:'));
-        console.log(pc.dim('  mobile-use run <bundleId> <task> --ios-device <udid> --team-id <id> --runner wda'));
+        console.log(pc.dim('  phone-use run <bundleId> <task> --ios-device <udid> --team-id <id> --runner wda'));
         process.exit(1);
       }
     } else if (iosDeviceUdid && runner === 'maestro' && (!teamId || !appFile)) {
       console.error(pc.red('\n❌ Error: --ios-device with maestro requires --team-id and --app-file'));
       console.log(pc.dim('\nUsage:'));
-      console.log(pc.dim('  mobile-use run <bundleId> <task> --ios-device <udid> --team-id <id> --app-file /path/to/app.ipa'));
+      console.log(pc.dim('  phone-use run <bundleId> <task> --ios-device <udid> --team-id <id> --app-file /path/to/app.ipa'));
       console.log(pc.dim('\nOr use wda runner (fastest, no --app-file needed):'));
-      console.log(pc.dim('  mobile-use run <bundleId> <task> --ios-device <udid> --team-id <id> --runner wda'));
+      console.log(pc.dim('  phone-use run <bundleId> <task> --ios-device <udid> --team-id <id> --runner wda'));
       process.exit(1);
     }
 
@@ -243,7 +243,7 @@ program
       maestroSpinner.succeed(`Maestro installed: ${version}`);
     } else {
       maestroSpinner.fail('Maestro not installed');
-      console.log(pc.dim('  Run: mobile-use install-maestro'));
+      console.log(pc.dim('  Run: phone-use install-maestro'));
       allGood = false;
     }
 
@@ -282,13 +282,13 @@ program
         }
       } else {
         iosSpinner.warn('maestro-ios-device not installed (optional, for physical iOS)');
-        console.log(pc.dim('  Run: mobile-use install-ios-device'));
+        console.log(pc.dim('  Run: phone-use install-ios-device'));
       }
     }
 
     console.log('');
     if (allGood) {
-      console.log(pc.green('✅ All checks passed! Ready to use mobile-use.\n'));
+      console.log(pc.green('✅ All checks passed! Ready to use phone-use.\n'));
     } else {
       console.log(pc.yellow('⚠️  Some checks failed. Please fix the issues above.\n'));
       process.exit(1);
@@ -358,7 +358,7 @@ program
 
     if (runner === 'maestro' && !isMaestroInstalled()) {
       console.log(pc.yellow('\n⚠️  Maestro is not installed.'));
-      console.log(pc.dim('Run: mobile-use install-maestro\n'));
+      console.log(pc.dim('Run: phone-use install-maestro\n'));
       process.exit(1);
     }
 
@@ -370,12 +370,12 @@ program
     if (runner === 'xctest') {
       if (!options?.device && !iosDeviceUdid) {
         console.error(pc.red('\n❌ Error: --runner xctest requires --device <simulator-udid>'));
-        console.log(pc.dim('Usage: mobile-use <bundleId> <task> --device <sim-udid> --runner xctest'));
+        console.log(pc.dim('Usage: phone-use <bundleId> <task> --device <sim-udid> --runner xctest'));
         process.exit(1);
       }
     } else if (runner === 'wda' && (!iosDeviceUdid || !teamId)) {
       console.error(pc.red('\n❌ Error: --runner wda requires --ios-device and --team-id'));
-      console.log(pc.dim('Usage: mobile-use <bundleId> <task> --ios-device <udid> --team-id <id> --runner wda'));
+      console.log(pc.dim('Usage: phone-use <bundleId> <task> --ios-device <udid> --team-id <id> --runner wda'));
       process.exit(1);
     } else if (iosDeviceUdid && runner === 'maestro' && (!teamId || !appFile)) {
       console.error(pc.red('\n❌ Error: --ios-device with maestro requires --team-id and --app-file'));

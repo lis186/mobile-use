@@ -121,7 +121,7 @@ export async function startMcpServer(config: McpServerConfig): Promise<void> {
   const session = new DeviceSession(config);
 
   const server = new McpServer({
-    name: 'mobile-use',
+    name: 'phone-use',
     version: '1.0.0',
   });
 
@@ -400,5 +400,5 @@ export async function startMcpServer(config: McpServerConfig): Promise<void> {
   await server.connect(transport);
 
   // Log to stderr (stdout is reserved for MCP JSON-RPC)
-  process.stderr.write(`[mobile-use] MCP server running (runner=${config.runner})\n`);
+  process.stderr.write(`[phone-use] MCP server running (runner=${config.runner})\n`);
 }

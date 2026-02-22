@@ -166,8 +166,8 @@ export async function installMaestroIosDevice(): Promise<boolean> {
       console.log(pc.dim('    security find-identity -v -p codesigning | grep "Developer"'));
       console.log(pc.dim('\n  Start the bridge (in a separate terminal):'));
       console.log(pc.dim('    maestro-ios-device --team-id YOUR_TEAM_ID --device DEVICE_UDID'));
-      console.log(pc.dim('\n  Then run mobile-use:'));
-      console.log(pc.dim('    mobile-use <bundleId> <task> --ios-device UDID --team-id TEAM_ID --app-file /path/to/app.ipa\n'));
+      console.log(pc.dim('\n  Then run phone-use:'));
+      console.log(pc.dim('    phone-use <bundleId> <task> --ios-device UDID --team-id TEAM_ID --app-file /path/to/app.ipa\n'));
 
       return true;
     } else {
@@ -197,6 +197,6 @@ export async function ensureMaestroIosDeviceInstalled(): Promise<boolean> {
   return await installMaestroIosDevice();
 }
 
-// Note: standalone invocation removed — use `mobile-use install-maestro` instead.
+// Note: standalone invocation removed — use `phone-use install-maestro` instead.
 // The old main-guard (`import.meta.url === process.argv[1]`) fires in bundled
 // builds, killing the CLI while async runners (WDA/XCTest) are still connecting.
