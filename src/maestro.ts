@@ -77,7 +77,7 @@ export class MaestroClient implements MobileDevice {
     return cmd;
   }
 
-  private buildMaestroRunnerCommand(flowPath: string): string {
+  private buildMaestroRunnerCommand(flowPath: string, opts?: { output?: string; flatten?: boolean }): string {
     // maestro-runner may be installed at ~/.maestro-runner/bin/
     const homeBin = path.join(os.homedir(), '.maestro-runner', 'bin', 'maestro-runner');
     let cmd = existsSync(homeBin) ? homeBin : 'maestro-runner';
@@ -95,7 +95,12 @@ export class MaestroClient implements MobileDevice {
       cmd += ` --device ${this.deviceId}`;
     }
 
-    cmd += ` test ${flowPath}`;
+    // --output and --flatten must come BEFORE the flow file path
+    // (maestro-runner stops parsing flags after the first positional arg)
+    cmd += ` test`;
+    if (opts?.output) cmd += ` --output ${opts.output}`;
+    if (opts?.flatten) cmd += ` --flatten`;
+    cmd += ` ${flowPath}`;
     return cmd;
   }
 
@@ -340,7 +345,7 @@ export class MaestroClient implements MobileDevice {
       writeFileSync(flowPath, yaml);
 
       const cmd = this.runner === 'maestro-runner'
-        ? this.buildMaestroRunnerCommand(flowPath) + ` --output ${tempDir}/reports --flatten`
+        ? this.buildMaestroRunnerCommand(flowPath, { output: `${tempDir}/reports`, flatten: true })
         : this.buildMaestroCommand(flowPath);
 
       execSync(cmd, {
