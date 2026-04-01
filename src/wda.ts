@@ -165,8 +165,22 @@ export class WDAClient implements MobileDevice {
     try {
       const resp = await fetch(`${this.baseUrl}/status`);
       if (resp.ok) {
-        const data = (await resp.json()) as { value?: { ready?: boolean } };
-        return data.value?.ready === true;
+        const data = (await resp.json()) as { value?: { ready?: boolean; ios?: { ip?: string } } };
+        if (data.value?.ready === true) {
+          // If WDA reports a device IP, switch to it directly.
+          // iproxy 2.x has a POST body forwarding bug that returns schema
+          // placeholders instead of real data — bypassing it fixes CJK and
+          // all other POST-based commands.
+          const deviceIp = data.value.ios?.ip;
+          if (deviceIp && deviceIp !== '127.0.0.1') {
+            const directUrl = `http://${deviceIp}:${this.port}`;
+            process.stderr.write(
+              `[WDA] Switching to direct device IP ${directUrl} (bypasses iproxy POST bug)\n`
+            );
+            this.baseUrl = directUrl;
+          }
+          return true;
+        }
       }
     } catch {
       // Not running
@@ -295,12 +309,29 @@ export class WDAClient implements MobileDevice {
   }
 
   async tapText(text: string): Promise<void> {
+    // Try WDA element API first
     const elementId = await this.findElementByText(text);
     if (elementId) {
       await this.sessionFetch(`/element/${elementId}/click`, { method: 'POST', body: '{}' });
-    } else {
-      throw new Error(`[WDA] Element with text "${text}" not found`);
+      return;
     }
+
+    // Fallback: parse accessibility tree XML — required for CJK labels because
+    // WDA's element search matches accessibilityIdentifier, not display text.
+    const center = await this.findElementCenterByTextInTree(text);
+    if (center) {
+      await this.performActions([
+        this.pointerAction([
+          { type: 'pointerMove', duration: 0, x: center.x, y: center.y },
+          { type: 'pointerDown', button: 0 },
+          { type: 'pause', duration: 50 },
+          { type: 'pointerUp', button: 0 },
+        ]),
+      ]);
+      return;
+    }
+
+    throw new Error(`[WDA] Element with text "${text}" not found`);
   }
 
   async doubleTap(x: number, y: number): Promise<void> {
@@ -332,16 +363,22 @@ export class WDAClient implements MobileDevice {
   }
 
   async longPressText(text: string): Promise<void> {
+    let cx: number, cy: number;
+
     const elementId = await this.findElementByText(text);
-    if (!elementId) throw new Error(`[WDA] Element with text "${text}" not found`);
-
-    const resp = await this.sessionFetch(`/element/${elementId}/rect`);
-    const data = (await resp.json()) as { value?: { x?: number; y?: number; width?: number; height?: number } };
-    const rect = data.value;
-    if (!rect) throw new Error('[WDA] Could not get element rect');
-
-    const cx = Math.round((rect.x ?? 0) + (rect.width ?? 0) / 2);
-    const cy = Math.round((rect.y ?? 0) + (rect.height ?? 0) / 2);
+    if (elementId) {
+      const resp = await this.sessionFetch(`/element/${elementId}/rect`);
+      const data = (await resp.json()) as { value?: { x?: number; y?: number; width?: number; height?: number } };
+      const rect = data.value;
+      if (!rect) throw new Error('[WDA] Could not get element rect');
+      cx = Math.round((rect.x ?? 0) + (rect.width ?? 0) / 2);
+      cy = Math.round((rect.y ?? 0) + (rect.height ?? 0) / 2);
+    } else {
+      const center = await this.findElementCenterByTextInTree(text);
+      if (!center) throw new Error(`[WDA] Element with text "${text}" not found`);
+      cx = center.x;
+      cy = center.y;
+    }
 
     await this.performActions([
       this.pointerAction([
@@ -515,6 +552,59 @@ export class WDAClient implements MobileDevice {
         if (eid) return eid;
       } catch {
         continue;
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * Parse the accessibility tree XML to find an element by its display text
+   * (label, name, or value attribute). Returns pixel center coordinates.
+   *
+   * This is the reliable path for CJK text: WDA's element search API matches
+   * against accessibilityIdentifier (usually ASCII), while the XML tree contains
+   * the actual displayed label with full Unicode fidelity.
+   */
+  private async findElementCenterByTextInTree(
+    text: string
+  ): Promise<{ x: number; y: number } | null> {
+    const xml = await this.accessibilityTree();
+
+    const decodeEntities = (s: string) =>
+      s.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&apos;/g, "'");
+
+    const getAttr = (attrs: string, name: string): string | null => {
+      const m = attrs.match(new RegExp(`\\b${name}="([^"]*)"`));
+      return m ? decodeEntities(m[1]!) : null;
+    };
+
+    const elementRegex = /<XCUIElementType\w+\s+([^>]*?)\/?\s*>/g;
+    let match;
+
+    while ((match = elementRegex.exec(xml)) !== null) {
+      const attrs = match[1]!;
+      if (getAttr(attrs, 'visible') === 'false') continue;
+
+      const label = getAttr(attrs, 'label') ?? '';
+      const name = getAttr(attrs, 'name') ?? '';
+      const value = getAttr(attrs, 'value') ?? '';
+
+      const found = [label, name, value].some(
+        (v) => v === text || v.toLowerCase().includes(text.toLowerCase())
+      );
+      if (!found) continue;
+
+      const x = getAttr(attrs, 'x');
+      const y = getAttr(attrs, 'y');
+      const w = getAttr(attrs, 'width');
+      const h = getAttr(attrs, 'height');
+
+      if (x && y && w && h) {
+        return {
+          x: parseInt(x, 10) + Math.round(parseInt(w, 10) / 2),
+          y: parseInt(y, 10) + Math.round(parseInt(h, 10) / 2),
+        };
       }
     }
 

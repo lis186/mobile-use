@@ -53,7 +53,7 @@ class DeviceSession {
     const device = await this.getDevice();
     try {
       return await fn(device);
-    } catch (err) {
+    } catch {
       // Retry once — session may have expired
       if (this.device) {
         try { await this.device.disconnect(); } catch { /* ignore */ }
