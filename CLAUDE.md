@@ -61,8 +61,15 @@ Once WDA is running, `WDAClient.start()` auto-detects and connects.
 
 ## Known Issues
 
-### `tapText` fails for CJK characters
-WDA element search (`/session/{id}/element` with `name` locator) often can't find UI elements with Chinese/Japanese/Korean labels. The AI will automatically fall back to coordinate-based tap, which works fine. Not a blocker, but expect `tapText` failures in CJK apps.
+### `tapText` fails for CJK characters — **FIXED**
+~~WDA element search often can't find CJK labels.~~ `WDAClient` now falls back to
+parsing the accessibility tree XML directly, which contains full Unicode labels with
+pixel coordinates. `tapText("天氣")` works reliably on real devices.
+
+### iproxy POST forwarding bug — **FIXED**
+iproxy 2.x corrupts HTTP POST bodies, causing WDA to return JSON schema placeholders
+instead of real data. `WDAClient` now auto-detects the device IP from `GET /status`
+(`ios.ip`) and connects directly via Wi-Fi, bypassing iproxy for all POST requests.
 
 ### `maestro-runner` tap bug
 `maestro-runner` internally calls WDA's `/wda/tap` vendor endpoint without properly establishing a session context. Screenshots work (GET endpoints don't need sessions), but all tap/click actions fail. As of v1.0.7, this is unfixed. Use `--runner wda` instead.
