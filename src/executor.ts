@@ -2,6 +2,7 @@
  * TaskExecutor - Orchestrates the AI agent and Maestro client
  */
 
+import { createHash } from 'node:crypto';
 import ora, { type Ora } from 'ora';
 import pc from 'picocolors';
 import { MaestroClient } from './maestro.js';
@@ -110,7 +111,7 @@ export class TaskExecutor {
           await this.maestro.launch();
           launchSpinner.succeed('App launched');
           actionHistory.push('launched');
-          await sleep(3000);
+          await this.waitForScreenStable();
         } catch (error) {
           launchSpinner.fail('Failed to launch app');
           const err = error as Error;
@@ -131,25 +132,31 @@ export class TaskExecutor {
 
         const observeSpinner = createSpinner('Capturing screen...').start();
         let screenshot: string;
+        let accessibilityTree: string | undefined;
 
         try {
-          screenshot = await this.maestro.screenshotBase64(steps);
+          // Screenshot and accessibility tree are independent — fetch in parallel
+          const [screenshotResult, treeResult] = await Promise.allSettled([
+            this.maestro.screenshotBase64(steps),
+            this.maestro.accessibilityTree(),
+          ]);
+
+          if (screenshotResult.status === 'rejected') {
+            throw screenshotResult.reason as Error;
+          }
+          screenshot = screenshotResult.value;
           observeSpinner.succeed('Screen captured');
+
+          if (treeResult.status === 'fulfilled') {
+            accessibilityTree = treeResult.value || undefined;
+          }
+          // tree failure is fail-open: continue with screenshot-only
         } catch (error) {
           observeSpinner.fail('Screenshot failed');
           const err = error as Error;
           console.log(pc.yellow(`  ⚠️ ${err.message}`));
           await sleep(2000);
           continue;
-        }
-
-        // Fetch accessibility tree (fail-open: continue without it)
-        let accessibilityTree: string | undefined;
-        try {
-          const rawTree = await this.maestro.accessibilityTree();
-          accessibilityTree = rawTree || undefined;
-        } catch {
-          // Tree fetch failed — continue with screenshot-only
         }
 
         // Decide
@@ -219,19 +226,47 @@ export class TaskExecutor {
     }
   }
 
+  private async waitForScreenStable(maxMs = 5000, intervalMs = 500): Promise<void> {
+    const deadline = Date.now() + maxMs;
+    let prevHash: string | null = null;
+    let stableCount = 0;
+
+    while (Date.now() < deadline) {
+      let current: string;
+      try {
+        current = await this.maestro.screenshotBase64(0);
+      } catch {
+        await sleep(intervalMs);
+        continue;
+      }
+
+      const hash = createHash('md5').update(current).digest('hex');
+      if (hash === prevHash) {
+        stableCount++;
+        if (stableCount >= 2) return; // stable for 2 consecutive checks
+      } else {
+        stableCount = 0;
+      }
+      prevHash = hash;
+      await sleep(intervalMs);
+    }
+    // timed out — proceed anyway
+  }
+
   private getPostActionDelay(action: string): number {
     switch (action) {
       case 'launchApp':
       case 'stopApp':
-        return 3000;
-      case 'inputText':
+        return 2000;
       case 'scroll':
       case 'swipe':
-        return 800;
+        return 500;
+      case 'inputText':
+        return 300;
       case 'wait':
         return 0; // wait action handles its own delay
       default:
-        return 500;
+        return 300;
     }
   }
 

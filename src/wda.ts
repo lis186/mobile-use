@@ -93,8 +93,8 @@ export class WDAClient implements MobileDevice {
     );
     this.xcodebuildProc.unref();
 
-    // Poll /status until WDA is ready
-    await this.pollReady(60_000);
+    // Poll /status until WDA is ready (xcodebuild on physical device takes 2-3 min)
+    await this.pollReady(180_000);
 
     // Create session
     await this.createSession();
@@ -112,11 +112,17 @@ export class WDAClient implements MobileDevice {
   async stop(): Promise<void> {
     process.stderr.write('[WDA] Stopping...\n');
     if (this.sessionId) {
-      try {
-        await this.wdaFetch(`/session/${this.sessionId}`, { method: 'DELETE' });
-      } catch {
-        // Best-effort session cleanup
+      if (this.managedProcesses) {
+        // We own the WDA process — clean up the session on device
+        try {
+          await this.wdaFetch(`/session/${this.sessionId}`, { method: 'DELETE' });
+        } catch {
+          // Best-effort
+        }
       }
+      // For externally managed WDA, leave the device session intact so the
+      // next checkRunning() still sees ready:true. The session will timeout
+      // or be replaced on next connect.
       this.sessionId = null;
     }
     if (this.managedProcesses) {
@@ -162,16 +168,53 @@ export class WDAClient implements MobileDevice {
   }
 
   private async checkRunning(): Promise<boolean> {
-    try {
-      const resp = await fetch(`${this.baseUrl}/status`);
-      if (resp.ok) {
-        const data = (await resp.json()) as { value?: { ready?: boolean; ios?: { ip?: string } } };
-        if (data.value?.ready === true) {
-          // If WDA reports a device IP, switch to it directly.
-          // iproxy 2.x has a POST body forwarding bug that returns schema
-          // placeholders instead of real data — bypassing it fixes CJK and
-          // all other POST-based commands.
-          const deviceIp = data.value.ios?.ip;
+    const MAX_RETRIES = 3;
+    for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+      if (attempt > 0) await sleep(1000);
+      try {
+        const resp = await fetch(`${this.baseUrl}/status`);
+        if (!resp.ok) continue;
+
+        const text = await resp.text();
+
+        // Try standard JSON parse first
+        type WDAStatusBody = { value?: { ready?: boolean; ios?: { ip?: string } } };
+        let parsed: WDAStatusBody | null = null;
+        try {
+          parsed = JSON.parse(text) as WDAStatusBody;
+        } catch {
+          // iproxy 2.x sometimes returns a schema template with unquoted type
+          // names (e.g. `ready: bool`) instead of real values. This is not
+          // valid JSON but it DOES mean WDA is up and responding — treat it
+          // as running and try to extract the device IP via regex so we can
+          // bypass iproxy for subsequent requests.
+          const ipMatch = text.match(/ip:\s*["']?([\d.]+)["']?/);
+          if (ipMatch?.[1] && ipMatch[1] !== '127.0.0.1') {
+            const directUrl = `http://${ipMatch[1]}:${this.port}`;
+            process.stderr.write(
+              `[WDA] iproxy response corrupt — switching to direct device IP ${directUrl}\n`
+            );
+            this.baseUrl = directUrl;
+            // Verify the direct connection returns valid JSON
+            try {
+              const directResp = await fetch(`${this.baseUrl}/status`);
+              if (directResp.ok) {
+                parsed = (await directResp.json()) as WDAStatusBody;
+              }
+            } catch {
+              // direct connection failed; fall through to return true anyway
+              // since HTTP 200 from iproxy means WDA is alive
+            }
+          }
+          if (!parsed) {
+            // HTTP 200 with unparseable body = WDA is alive but in an odd state.
+            // Returning true prevents killLeftovers() + a redundant xcodebuild launch.
+            return true;
+          }
+        }
+
+        if (parsed !== null && parsed.value?.ready === true) {
+          const deviceIp = parsed.value?.ios?.ip;
           if (deviceIp && deviceIp !== '127.0.0.1') {
             const directUrl = `http://${deviceIp}:${this.port}`;
             process.stderr.write(
@@ -181,9 +224,9 @@ export class WDAClient implements MobileDevice {
           }
           return true;
         }
+      } catch {
+        // Not running yet
       }
-    } catch {
-      // Not running
     }
     return false;
   }
