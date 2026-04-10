@@ -34,11 +34,18 @@ export interface TimingSummary {
   model: string;
 }
 
+/** Nearest-rank percentile on a sorted array; stable for small N. */
+function percentile(sorted: number[], p: number): number {
+  if (sorted.length === 0) return 0;
+  const idx = Math.max(0, Math.min(sorted.length - 1, Math.ceil(sorted.length * p) - 1));
+  return sorted[idx] ?? 0;
+}
+
 function stats(values: number[]): TimingStats {
   if (values.length === 0) return { p50: 0, p95: 0, avg: 0, max: 0 };
   const sorted = [...values].sort((a, b) => a - b);
-  const p50 = sorted[Math.floor(sorted.length * 0.5)] ?? 0;
-  const p95 = sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * 0.95))] ?? 0;
+  const p50 = percentile(sorted, 0.5);
+  const p95 = percentile(sorted, 0.95);
   const sum = sorted.reduce((a, b) => a + b, 0);
   const avg = sum / sorted.length;
   const max = sorted[sorted.length - 1] ?? 0;

@@ -46,9 +46,16 @@ export async function saveEvidence(
   if (!(await exists(linkPath))) {
     try {
       await symlink(sourceName, linkPath);
-    } catch {
-      // Filesystem rejects symlinks — fall back to copy.
-      await copyFile(sourcePath, linkPath);
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException).code;
+      if (code === 'EEXIST' && (await exists(linkPath))) {
+        // Race: another caller created it first — that's fine.
+      } else if (code === 'EPERM' || code === 'EACCES' || code === 'ENOTSUP' || code === 'EOPNOTSUPP') {
+        // Filesystem rejects symlinks (FAT32, some NFS) — fall back to a copy.
+        await copyFile(sourcePath, linkPath);
+      } else {
+        throw err;
+      }
     }
   }
 

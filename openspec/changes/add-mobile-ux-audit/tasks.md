@@ -1,56 +1,56 @@
 ## 1. Types and schemas
 
-- [ ] 1.1 Add `AuditConfig`, `AuditIssue`, `AuditReport`, `VisitedScreen`, `TreeQuality`, `StepTiming`, `StepRecord` types to `src/types.ts`
-- [ ] 1.2 Create `src/schemas/audit.ts` with Zod schema for `AuditDecision` (navigation + optional audit block with evidence/confidence/principle/recommendation)
-- [ ] 1.3 Derive `AuditDecision` TS type from the Zod schema via `z.infer`
+- [x] 1.1 Add `AuditConfig`, `AuditIssue`, `AuditReport`, `VisitedScreen`, `TreeQuality`, `StepTiming`, `StepRecord` types to `src/types.ts`
+- [x] 1.2 Create `src/schemas/audit.ts` with Zod schema for `AuditDecision` (navigation + optional audit block with evidence/confidence/principle/recommendation)
+- [x] 1.3 Derive `AuditDecision` TS type from the Zod schema via `z.infer`
 
 ## 2. Error taxonomy
 
-- [ ] 2.1 Create `src/errors/audit-errors.ts` exporting `AuditError` class with `code: AuditErrorCode` and `hint: string`
-- [ ] 2.2 Define error codes: `E_DRIVER_NOT_READY`, `E_APP_NOT_INSTALLED`, `E_MODEL_INCOMPATIBLE`, `E_NETWORK_TIMEOUT`, `E_DEVICE_LOCKED`, `E_APP_CRASHED`, `E_BUDGET_EXCEEDED`, `E_USER_ABORTED`, `E_CONCURRENT_RUN`
+- [x] 2.1 Create `src/errors/audit-errors.ts` exporting `AuditError` class with `code: AuditErrorCode` and `hint: string`
+- [x] 2.2 Define error codes: `E_DRIVER_NOT_READY`, `E_APP_NOT_INSTALLED`, `E_MODEL_INCOMPATIBLE`, `E_NETWORK_TIMEOUT`, `E_DEVICE_LOCKED`, `E_APP_CRASHED`, `E_BUDGET_EXCEEDED`, `E_USER_ABORTED`, `E_CONCURRENT_RUN`
 
 ## 3. Tree parser quality grading
 
-- [ ] 3.1 Extend `src/core/tree-parser.ts` to return `{ text: string, grade: 'rich' | 'sparse' | 'empty', labeledElementCount: number }` without breaking existing callers
-- [ ] 3.2 Add `extractNavTargets(tree)` helper that pulls tab bar / nav menu labels from a rich tree
-- [ ] 3.3 Add `extractLabels(tree)` helper that returns sorted label array for fingerprinting
+- [x] 3.1 Extend `src/core/tree-parser.ts` to return `{ text: string, grade: 'rich' | 'sparse' | 'empty', labeledElementCount: number }` without breaking existing callers
+- [x] 3.2 Add `extractNavTargets(tree)` helper that pulls tab bar / nav menu labels from a rich tree
+- [x] 3.3 Add `extractLabels(tree)` helper that returns sorted label array for fingerprinting
 
 ## 4. Screen fingerprinting helper
 
-- [ ] 4.1 Create `src/core/screen-fingerprint.ts` exporting `fingerprintScreen({ tree, screenshot, grade })`
-- [ ] 4.2 Implement MD5-of-sorted-labels path for `rich` grade
-- [ ] 4.3 Implement perceptual-hash fallback for `sparse`/`empty` grades (simple average-hash via `sharp`)
+- [x] 4.1 Create `src/core/screen-fingerprint.ts` exporting `fingerprintScreen({ tree, screenshot, grade })`
+- [x] 4.2 Implement MD5-of-sorted-labels path for `rich` grade
+- [x] 4.3 Implement perceptual-hash fallback for `sparse`/`empty` grades (simple average-hash via `sharp`)
 
 ## 5. Step timing instrumentation
 
-- [ ] 5.1 Create `src/core/step-timing.ts` exporting `StepTiming` interface, `summarize(timings)` helper (P50/P95/avg), and `estimateCost(tokens, model)` function
+- [x] 5.1 Create `src/core/step-timing.ts` exporting `StepTiming` interface, `summarize(timings)` helper (P50/P95/avg), and `estimateCost(tokens, model)` function
 
 ## 5A. Gemini rate limiter (from OPS-19 POC finding)
 
-- [ ] 5A.1 Create `src/core/rate-limiter.ts` exporting `GeminiRateLimiter` class with sliding-window token bucket (default 12 RPM = free-tier 15 RPM with 20 % headroom)
-- [ ] 5A.2 Implement `acquire()` that blocks when the window is full and prints a visible `⏸ Rate limit: waiting Xs (N/N)` console line so the user sees throttling is the reason for the pause
-- [ ] 5A.3 Implement `remaining()` helper for budget visibility
+- [x] 5A.1 Create `src/core/rate-limiter.ts` exporting `GeminiRateLimiter` class with sliding-window token bucket (default 12 RPM = free-tier 15 RPM with 20 % headroom)
+- [x] 5A.2 Implement `acquire()` that blocks when the window is full and prints a visible `⏸ Rate limit: waiting Xs (N/N)` console line so the user sees throttling is the reason for the pause
+- [x] 5A.3 Implement `remaining()` helper for budget visibility
 - [ ] 5A.4 Expose via `AuditConfig.rpmLimit`, wired from `--rpm-limit` CLI flag (default 12; paid-tier users pass a high number to effectively disable throttling)
 
 ## 6. JSONL streaming writer
 
-- [ ] 6.1 Create `src/core/jsonl-writer.ts` exporting `appendStep(outputDir, StepRecord)` and `appendIssue(outputDir, AuditIssue)` (append-only, one line per call)
-- [ ] 6.2 Create `readJsonl(path)` helper for reading back records
+- [x] 6.1 Create `src/core/jsonl-writer.ts` exporting `appendStep(outputDir, StepRecord)` and `appendIssue(outputDir, AuditIssue)` (append-only, one line per call)
+- [x] 6.2 Create `readJsonl(path)` helper for reading back records
 
 ## 7. Evidence capture with dedup
 
-- [ ] 7.1 Create `saveEvidence(outputDir, screenshotBuffer, issueId)` in `src/core/evidence.ts`
-- [ ] 7.2 Implement SHA-1 content hash + JPEG optimization via `sharp` (quality 85)
-- [ ] 7.3 Write deduplicated source file `_<hash>.jpg`, create symlink `<issueId>.jpg` → source (with copy fallback)
+- [x] 7.1 Create `saveEvidence(outputDir, screenshotBuffer, issueId)` in `src/core/evidence.ts`
+- [x] 7.2 Implement SHA-1 content hash + JPEG optimization via `sharp` (quality 85)
+- [x] 7.3 Write deduplicated source file `_<hash>.jpg`, create symlink `<issueId>.jpg` → source (with copy fallback)
 
 ## 7A. Screenshot annotation
 
-- [ ] 7A.1 Create `src/core/annotate.ts` exporting `annotateScreenshot(buffer, decision, stepNum): Promise<Buffer>`
-- [ ] 7A.2 Build SVG overlay: red circle (outer glow r=60 + inner r=38 + dot r=14) at tap coordinate, connector line to text card, text card with `Action`, `Target:`, `Why:`, and `Step N/M · model` footer
-- [ ] 7A.3 Use font stack `"-apple-system, \"PingFang TC\", sans-serif"` for CJK compatibility (validated by OPS-1 POC)
-- [ ] 7A.4 Handle non-point actions: arrow for `scroll`/`swipe`, caret for `inputText`, no marker for `wait`/`hideKeyboard`
-- [ ] 7A.5 Composite overlay onto raw screenshot via `sharp.composite()` and return JPEG buffer (quality 85)
-- [ ] 7A.6 Add `writeAnnotated(outputDir, stepNum, annotatedBuffer)` helper that writes to `annotated/step-NN.jpg`
+- [x] 7A.1 Create `src/core/annotate.ts` exporting `annotateScreenshot(buffer, decision, stepNum): Promise<Buffer>`
+- [x] 7A.2 Build SVG overlay: red circle (outer glow r=60 + inner r=38 + dot r=14) at tap coordinate, connector line to text card, text card with `Action`, `Target:`, `Why:`, and `Step N/M · model` footer
+- [x] 7A.3 Use font stack `"-apple-system, \"PingFang TC\", sans-serif"` for CJK compatibility (validated by OPS-1 POC)
+- [x] 7A.4 Handle non-point actions: arrow for `scroll`/`swipe`, caret for `inputText`, no marker for `wait`/`hideKeyboard`
+- [x] 7A.5 Composite overlay onto raw screenshot via `sharp.composite()` and return JPEG buffer (quality 85)
+- [x] 7A.6 Add `writeAnnotated(outputDir, stepNum, annotatedBuffer)` helper that writes to `annotated/step-NN.jpg`
 
 > **Parallelization**: Groups 2–7A are independent utility modules with no cross-dependencies. They can all be built simultaneously after Group 1 completes.
 

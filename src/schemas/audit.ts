@@ -93,10 +93,34 @@ export const navigationSchema = z.object({
     .max(100)
     .optional()
     .describe('tap position as percentage 0-100 of screen height; ONLY use when visible text is unavailable'),
-  startX: z.number().int().min(0).max(100).optional(),
-  startY: z.number().int().min(0).max(100).optional(),
-  endX: z.number().int().min(0).max(100).optional(),
-  endY: z.number().int().min(0).max(100).optional(),
+  startX: z
+    .number()
+    .int()
+    .min(0)
+    .max(100)
+    .optional()
+    .describe('gesture start x as percentage 0-100 of screen width; for scroll/swipe'),
+  startY: z
+    .number()
+    .int()
+    .min(0)
+    .max(100)
+    .optional()
+    .describe('gesture start y as percentage 0-100 of screen height; for scroll/swipe'),
+  endX: z
+    .number()
+    .int()
+    .min(0)
+    .max(100)
+    .optional()
+    .describe('gesture end x as percentage 0-100 of screen width; for scroll/swipe'),
+  endY: z
+    .number()
+    .int()
+    .min(0)
+    .max(100)
+    .optional()
+    .describe('gesture end y as percentage 0-100 of screen height; for scroll/swipe. Lower Y than startY means swiping upward (e.g. scroll down the content)'),
   appId: z.string().optional().describe('bundle ID for launchApp / stopApp'),
   url: z.string().optional().describe('URL for openLink'),
   key: z.string().optional().describe('key name for pressKey'),

@@ -30,18 +30,22 @@ export function parseAccessibilityTree(raw: string): string {
 export function parseWDATree(xml: string): string {
   const lines: string[] = [];
 
-  // Extract screen dimensions from root Application element
-  let screenW = 393, screenH = 852;
-  const appMatch = xml.match(/<XCUIElementTypeApplication\s+[^>]*?width="(\d+)"[^>]*?height="(\d+)"/);
-  if (appMatch) {
-    screenW = parseInt(appMatch[1]!, 10);
-    screenH = parseInt(appMatch[2]!, 10);
-  }
-
   const getAttr = (attrs: string, name: string): string | null => {
     const m = attrs.match(new RegExp(`\\b${name}="([^"]*)"`));
     return m ? m[1]! : null;
   };
+
+  // Extract screen dimensions from root Application element.
+  // Use an order-independent lookup so XML attribute ordering can't break us.
+  let screenW = 393, screenH = 852;
+  const appMatch = xml.match(/<XCUIElementTypeApplication\s+([^>]*)>/);
+  if (appMatch) {
+    const appAttrs = appMatch[1]!;
+    const w = getAttr(appAttrs, 'width');
+    const h = getAttr(appAttrs, 'height');
+    if (w) screenW = parseInt(w, 10);
+    if (h) screenH = parseInt(h, 10);
+  }
 
   const elementRegex = /<(XCUIElementType\w+)\s+([^>]*?)\/?\s*>/g;
   let match;

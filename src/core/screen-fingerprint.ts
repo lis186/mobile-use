@@ -56,11 +56,21 @@ export function fingerprintFromLabels(parsedText: string): string {
  */
 export async function fingerprintFromScreenshot(screenshotBase64: string): Promise<string> {
   const buffer = Buffer.from(screenshotBase64, 'base64');
-  const { data } = await sharp(buffer)
-    .resize(8, 8, { fit: 'fill' })
-    .greyscale()
-    .raw()
-    .toBuffer({ resolveWithObject: true });
+  // Guard before sharp() so an empty buffer doesn't throw and crash the audit loop.
+  if (buffer.length === 0) return '00000000';
+
+  let data: Buffer;
+  try {
+    const result = await sharp(buffer)
+      .resize(8, 8, { fit: 'fill' })
+      .greyscale()
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+    data = result.data;
+  } catch {
+    // Invalid image data — return a stable fallback rather than crashing the audit.
+    return '00000000';
+  }
 
   if (data.length === 0) return '00000000';
 

@@ -25,6 +25,9 @@ export class GeminiRateLimiter {
   private timestamps: number[] = [];
 
   constructor(options: RateLimiterOptions) {
+    if (!Number.isInteger(options.rpmLimit) || options.rpmLimit < 1) {
+      throw new RangeError('GeminiRateLimiter: rpmLimit must be a positive integer');
+    }
     this.rpmLimit = options.rpmLimit;
     this.log = options.log ?? ((msg) => console.log(msg));
   }
