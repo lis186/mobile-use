@@ -136,15 +136,15 @@
 
 ## 15. Unit tests
 
-- [ ] 15.1 Set up `npm test` script: `node --test tests/**/*.test.ts`
-- [ ] 15.2 Test `screen-fingerprint.ts`: stability (same input → same output), sort invariance, sparse/empty fallback, 8-char hex format
-- [ ] 15.3 Test `tree-parser.ts` grading: boundary cases at 0, 1, 2, 9, 10 elements
-- [ ] 15.4 Test `schemas/audit.ts`: valid schema acceptance, evidence min(20) rejection, confidence range, optional audit block absence
+- [x] 15.1 Set up `npm test` script: `node --test tests/**/*.test.ts`
+- [x] 15.2 Test `screen-fingerprint.ts`: stability (same input → same output), sort invariance, sparse/empty fallback, 8-char hex format
+- [x] 15.3 Test `tree-parser.ts` grading: boundary cases at 0, 1, 2, 9, 10 elements
+- [x] 15.4 Test `schemas/audit.ts`: valid schema acceptance, evidence min(20) rejection, confidence range, optional audit block absence
 - [ ] 15.5 Test `audit-report.ts`: full report render, empty issues, partial-run banner, onboarding exclusion
-- [ ] 15.6 Test `step-timing.ts`: P50/P95/avg math with known inputs, cost estimation per model
-- [ ] 15.7 Test `jsonl-writer.ts`: write and read-back round-trip, empty file handling
-- [ ] 15.8 Test `evidence.ts`: hash dedup (2 identical buffers → 1 file), symlink creation
-- [ ] 15.9 Test `annotate.ts`: SVG overlay renders for tap/scroll/swipe/inputText, output buffer is valid JPEG, text card contains Action/Target/Why
+- [x] 15.6 Test `step-timing.ts`: P50/P95/avg math with known inputs, cost estimation per model
+- [x] 15.7 Test `jsonl-writer.ts`: write and read-back round-trip, empty file handling
+- [x] 15.8 Test `evidence.ts`: hash dedup (2 identical buffers → 1 file), symlink creation
+- [x] 15.9 Test `annotate.ts`: SVG overlay renders for tap/scroll/swipe/inputText, output buffer is valid JPEG, text card contains Action/Target/Why
 
 ## 16. Run-mode regression safety
 
@@ -184,4 +184,4 @@
 
 ## 20. Unit tests for rate limiter (from OPS-19)
 
-- [ ] 20.1 Test `rate-limiter.ts`: single call within budget returns immediately, N+1 call blocks, timestamps outside window are pruned, `remaining()` returns correct count
+- [x] 20.1 Test `rate-limiter.ts`: single call within budget returns immediately, N+1 call blocks, timestamps outside window are pruned, `remaining()` returns correct count

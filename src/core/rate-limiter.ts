@@ -17,11 +17,14 @@ export interface RateLimiterOptions {
   rpmLimit: number;
   /** Optional logger hook; defaults to console.log with picocolors. */
   log?: (msg: string) => void;
+  /** Optional sleep function; defaults to real setTimeout. Tests inject a no-op. */
+  sleepFn?: (ms: number) => Promise<void>;
 }
 
 export class GeminiRateLimiter {
   private readonly rpmLimit: number;
   private readonly log: (msg: string) => void;
+  private readonly sleepFn: (ms: number) => Promise<void>;
   private timestamps: number[] = [];
 
   constructor(options: RateLimiterOptions) {
@@ -30,6 +33,7 @@ export class GeminiRateLimiter {
     }
     this.rpmLimit = options.rpmLimit;
     this.log = options.log ?? ((msg) => console.log(msg));
+    this.sleepFn = options.sleepFn ?? defaultSleep;
   }
 
   /**
@@ -53,7 +57,7 @@ export class GeminiRateLimiter {
           `(${this.timestamps.length}/${this.rpmLimit} calls in last 60s)`,
       ),
     );
-    await sleep(waitMs);
+    await this.sleepFn(waitMs);
     return this.acquire(); // re-check after wait
   }
 
@@ -70,6 +74,6 @@ export class GeminiRateLimiter {
   }
 }
 
-function sleep(ms: number): Promise<void> {
+function defaultSleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
