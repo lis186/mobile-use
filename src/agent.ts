@@ -25,7 +25,8 @@ export class TaskAgent {
     }
   }
 
-  private getModel(): LanguageModel {
+  /** Protected so subclasses (AuditAgent) can reuse the provider setup. */
+  protected getModel(): LanguageModel {
     if (this.provider === 'google' && this.google) {
       return this.google(this.model);
     }

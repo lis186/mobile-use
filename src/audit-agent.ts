@@ -100,21 +100,36 @@ export class AuditAgent extends TaskAgent {
 
     await this.rateLimiter.acquire();
 
-    // Wrap the AI call in Promise.race against the hard per-step timeout.
-    // On timeout we throw E_NETWORK_TIMEOUT so the executor gets a clear signal.
+    // AbortController cancels the in-flight AI call when the hard timeout
+    // fires. Without this, the loser of Promise.race would keep running in
+    // the background, burn tokens, and mutate fallbackStreak after the
+    // caller already saw E_NETWORK_TIMEOUT (the race leak Codex flagged).
+    const abortController = new AbortController();
+
+    // Set synchronously in the race so the aiCall coroutine can see it
+    // even if it resumes between microtasks after the timeout has fired.
+    let timedOut = false;
+
     const aiCall = (async () => {
       try {
         const result = await generateObject({
-          model: this.parentGetModel(),
+          model: this.getModel(),
           system: systemPrompt,
           messages: [{ role: 'user', content: userContent }],
           schema: auditDecisionSchema,
           maxRetries: this.auditConfig.maxRetries,
+          abortSignal: abortController.signal,
         });
-        // Success — reset the fallback streak
+        // If the race already resolved via timeout, drop the result silently.
+        if (timedOut) throw new Error('aborted');
         this.fallbackStreak = 0;
         return this.toStepResult(result.object, result.usage, false, ctx);
       } catch (err) {
+        // After timeout, the aiCall must NOT mutate state or throw anything
+        // other than an already-settled marker. Short-circuit here.
+        if (timedOut) throw new Error('aborted');
+        // Abort signalled from the timeout path — leave fallbackStreak alone.
+        if (isAbortError(err)) throw new Error('aborted');
         if (err instanceof NoObjectGeneratedError) {
           this.fallbackStreak++;
           if (this.fallbackStreak >= MAX_FALLBACK_STREAK) {
@@ -125,16 +140,21 @@ export class AuditAgent extends TaskAgent {
             );
           }
           // Degraded path: take just a navigation action so the step isn't wasted.
-          return await this.fallbackNavOnly(ctx, userContent, systemPrompt);
+          return await this.fallbackNavOnly(ctx, userContent, systemPrompt, abortController.signal);
         }
         throw err;
       }
     })();
+    // Prevent an unhandled rejection from the losing side of the race
+    // after we've already surfaced the timeout to the caller.
+    aiCall.catch(() => { /* swallowed: timeout path handles the error */ });
 
     const timeoutMs = this.auditConfig.hardTimeout;
     let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
     const timeoutPromise = new Promise<AuditStepResult>((_, reject) => {
       timeoutHandle = setTimeout(() => {
+        timedOut = true;
+        abortController.abort();
         reject(
           new AuditError(
             'E_NETWORK_TIMEOUT',
@@ -157,14 +177,6 @@ export class AuditAgent extends TaskAgent {
   }
 
   // ── Private helpers ────────────────────────────────────────────
-
-  private parentGetModel() {
-    // Access the parent's private getModel through a narrow cast. The parent
-    // is responsible for provider + model name. This avoids duplicating the
-    // Google vs OpenAI branching in every subclass.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return (this as any).getModel();
-  }
 
   /** Convert a validated AuditDecision into the executor-facing step result. */
   private toStepResult(
@@ -228,14 +240,16 @@ export class AuditAgent extends TaskAgent {
     ctx: AuditAgentContext,
     userContent: UserContentPart[],
     _systemPrompt: string,
+    abortSignal?: AbortSignal,
   ): Promise<AuditStepResult> {
     const minimalSystem = `You are a mobile navigation agent. Respond with ONLY a JSON object: { "action": "tap" | "tapText" | "scroll" | "back" | "done", "target": "brief description", "text": "exact text to tap", "reasoning": "one sentence" }. No markdown, no prose.`;
 
     const response = await generateText({
-      model: this.parentGetModel(),
+      model: this.getModel(),
       system: minimalSystem,
       messages: [{ role: 'user', content: userContent as UserContentPart[] }],
       maxRetries: this.auditConfig.maxRetries,
+      abortSignal,
     });
 
     const jsonMatch = response.text.match(/\{[\s\S]*\}/);
@@ -437,6 +451,17 @@ function safeJsonParse(text: string): unknown {
   } catch {
     return null;
   }
+}
+
+/** Detect AbortError shapes across Node and various SDK wrappers. */
+function isAbortError(err: unknown): boolean {
+  if (!err || typeof err !== 'object') return false;
+  const e = err as { name?: string; message?: string; code?: string; cause?: unknown };
+  if (e.name === 'AbortError') return true;
+  if (e.code === 'ABORT_ERR' || e.code === 'ERR_ABORTED') return true;
+  if (typeof e.message === 'string' && /abort/i.test(e.message)) return true;
+  if (e.cause) return isAbortError(e.cause);
+  return false;
 }
 
 /** Re-export so the executor can also extract nav targets from a parsed tree. */

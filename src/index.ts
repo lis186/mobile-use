@@ -263,10 +263,7 @@ function buildAuditConfig(bundleId: string, options: Record<string, unknown>): A
     );
   }
 
-  const maxSteps = parseInt(String(options.maxSteps ?? DEFAULT_AUDIT_MAX_STEPS), 10);
-  if (!Number.isFinite(maxSteps) || maxSteps < 1) {
-    throw new Error('audit: --max-steps must be a positive integer');
-  }
+  const maxSteps = parseIntFlag(options.maxSteps, DEFAULT_AUDIT_MAX_STEPS, '--max-steps', { min: 1 });
   if (maxSteps > 40) {
     console.log(
       pc.yellow(
@@ -276,15 +273,12 @@ function buildAuditConfig(bundleId: string, options: Record<string, unknown>): A
     );
   }
 
-  const rpmLimit = parseInt(String(options.rpmLimit ?? 12), 10);
-  if (!Number.isInteger(rpmLimit) || rpmLimit < 1) {
-    throw new Error('audit: --rpm-limit must be a positive integer');
-  }
-
-  const maxRetries = parseInt(String(options.maxRetries ?? 1), 10);
-  if (!Number.isInteger(maxRetries) || maxRetries < 0) {
-    throw new Error('audit: --max-retries must be a non-negative integer');
-  }
+  const rpmLimit = parseIntFlag(options.rpmLimit, 12, '--rpm-limit', { min: 1 });
+  const maxRetries = parseIntFlag(options.maxRetries, 1, '--max-retries', { min: 0 });
+  const stableTimeout = parseIntFlag(options.stableTimeout, 2000, '--stable-timeout', { min: 100 });
+  const tokenBudget = parseIntFlag(options.tokenBudget, 200_000, '--token-budget', { min: 1 });
+  const hardTimeout = parseIntFlag(options.hardTimeout, 45_000, '--hard-timeout', { min: 1000 });
+  const livePort = parseIntFlag(options.livePort, 7330, '--live-port', { min: 1, max: 65535 });
 
   // API key resolution reuses the run-command helper, which exits the process
   // with a formatted error on failure — that gives us the same UX as `run`.
@@ -304,15 +298,40 @@ function buildAuditConfig(bundleId: string, options: Record<string, unknown>): A
     model: String(options.model ?? defaultModel),
     maxSteps,
     outputDir,
-    stableTimeout: parseInt(String(options.stableTimeout ?? 2000), 10),
+    stableTimeout,
     maxRetries,
     rpmLimit,
-    tokenBudget: parseInt(String(options.tokenBudget ?? 200000), 10),
-    hardTimeout: parseInt(String(options.hardTimeout ?? 45000), 10),
+    tokenBudget,
+    hardTimeout,
     skipLaunch: Boolean(options.skipLaunch),
     live: Boolean(options.live),
-    livePort: parseInt(String(options.livePort ?? 7330), 10),
+    livePort,
   };
+}
+
+/**
+ * Parse a CLI integer flag, enforcing min/max bounds and rejecting NaN.
+ * Throws a plain Error with the flag name so the user sees "audit:
+ * --flag must be an integer ≥ N" rather than a silent NaN downstream.
+ */
+function parseIntFlag(
+  raw: unknown,
+  fallback: number,
+  flagName: string,
+  bounds: { min: number; max?: number },
+): number {
+  const source = raw ?? fallback;
+  const parsed = parseInt(String(source), 10);
+  if (!Number.isInteger(parsed)) {
+    throw new Error(`audit: ${flagName} must be an integer (got "${String(source)}")`);
+  }
+  if (parsed < bounds.min) {
+    throw new Error(`audit: ${flagName} must be ≥ ${bounds.min} (got ${parsed})`);
+  }
+  if (bounds.max !== undefined && parsed > bounds.max) {
+    throw new Error(`audit: ${flagName} must be ≤ ${bounds.max} (got ${parsed})`);
+  }
+  return parsed;
 }
 
 /**
@@ -347,10 +366,30 @@ function formatAuditError(err: unknown): void {
     return;
   }
   if (err instanceof Error) {
-    console.error(pc.red(`\n❌ ${err.message}\n`));
+    console.error(pc.red(`\n❌ ${redactSecrets(err.message)}\n`));
     return;
   }
-  console.error(pc.red(`\n❌ Unexpected error: ${String(err)}\n`));
+  console.error(pc.red(`\n❌ Unexpected error: ${redactSecrets(String(err))}\n`));
+}
+
+/**
+ * Redact likely-credential substrings from error messages before printing.
+ * AI SDKs and HTTP libraries occasionally echo API keys, bearer tokens, or
+ * query-string auth params in error text; this best-effort scrubber stops
+ * the most common patterns from landing in the terminal.
+ */
+function redactSecrets(text: string): string {
+  return text
+    // Bearer tokens: "Authorization: Bearer abc..." or "Bearer abc..."
+    .replace(/\b(Bearer\s+)[A-Za-z0-9._\-+/=]{8,}/gi, '$1<REDACTED>')
+    // Generic "api_key=..." or "apiKey: ..." in URLs / JSON / headers
+    .replace(/\b(api[_-]?key[=:]\s*["']?)[A-Za-z0-9._\-+/=]{8,}/gi, '$1<REDACTED>')
+    // Google AI keys start with "AIza" and are 39 chars
+    .replace(/\bAIza[A-Za-z0-9_\-]{35}\b/g, '<REDACTED>')
+    // OpenAI keys start with "sk-" and have ≥ 20 chars after
+    .replace(/\bsk-[A-Za-z0-9_\-]{20,}\b/g, '<REDACTED>')
+    // "key=..." or "token=..." in query strings
+    .replace(/\b(key|token|secret)=[A-Za-z0-9._\-+/=]{8,}/gi, '$1=<REDACTED>');
 }
 
 program
