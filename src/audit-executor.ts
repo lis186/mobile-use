@@ -17,16 +17,15 @@
  *   - finalize → Markdown report via the report writer (Group 13)
  */
 
-import { createHash } from 'node:crypto';
-import { mkdirSync, writeFileSync, readFileSync, existsSync, unlinkSync } from 'node:fs';
+import { writeFileSync, readFileSync, unlinkSync } from 'node:fs';
 import { writeFile, mkdir } from 'node:fs/promises';
 import * as path from 'node:path';
 import { performance } from 'node:perf_hooks';
 import ora from 'ora';
 import pc from 'picocolors';
-import { TaskExecutor, buildDriverFromTaskConfig } from './executor.js';
+import { TaskExecutor, buildDriverFromTaskConfig, sleep } from './executor.js';
 import { AuditAgent, type AuditStepResult } from './audit-agent.js';
-import { AuditError, isAuditError } from './errors/audit-errors.js';
+import { AuditError, isAuditError, type AuditErrorCode } from './errors/audit-errors.js';
 import { WDAClient } from './wda.js';
 import { XCTestClient } from './xctest.js';
 import { fingerprintScreen } from './core/screen-fingerprint.js';
@@ -59,16 +58,14 @@ const MAX_SCREENSHOT_RETRIES = 3;
 const STABLE_POLL_INTERVAL_MS = 250;
 const LOCK_DIR = '/tmp';
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
+export type AuditPartialReason = AuditErrorCode | 'E_UNEXPECTED';
 
 export interface AuditRunResult {
   success: boolean;
   outputDir: string;
   stepsTotal: number;
   issuesFound: number;
-  partialReason?: string;
+  partialReason?: AuditPartialReason;
 }
 
 export class AuditExecutor extends TaskExecutor {
@@ -135,7 +132,7 @@ export class AuditExecutor extends TaskExecutor {
       );
     }
 
-    let partialReason: string | undefined;
+    let partialReason: AuditPartialReason | undefined;
     try {
       if (!this.auditConfig.skipLaunch) {
         const spin = ora({ text: 'Launching app...', stream: process.stdout }).start();
@@ -276,33 +273,36 @@ export class AuditExecutor extends TaskExecutor {
         );
       }
 
-      // ── Collect + persist issues ────────────────────────────
-      const persistedIssues: AuditIssue[] = [];
+      // ── Collect + persist issues in parallel ────────────────
+      let persistedIssues: AuditIssue[] = [];
       if (result.audit?.issues?.length) {
-        for (const issue of result.audit.issues) {
+        const withIds = result.audit.issues.map((issue) => {
           this.issueCounter++;
-          const id = `ISSUE-${String(this.issueCounter).padStart(3, '0')}`;
-          const evidencePath = await saveEvidence(
-            this.auditConfig.outputDir,
-            screenshotBuffer,
-            id,
-          );
-          const persisted: AuditIssue = {
-            id,
-            title: issue.title,
-            severity: issue.severity,
-            screenName,
-            principle: issue.principle,
-            persona: issue.persona,
-            evidence: issue.evidence,
-            confidence: issue.confidence,
-            recommendation: issue.recommendation,
-            stepNumber: step,
-            evidencePath,
+          return {
+            issue,
+            id: `ISSUE-${String(this.issueCounter).padStart(3, '0')}`,
           };
-          await appendIssue(this.auditConfig.outputDir, persisted);
-          persistedIssues.push(persisted);
-        }
+        });
+        persistedIssues = await Promise.all(
+          withIds.map(async ({ issue, id }) => {
+            const evidencePath = await saveEvidence(this.auditConfig.outputDir, screenshotBuffer, id);
+            const persisted: AuditIssue = {
+              id,
+              title: issue.title,
+              severity: issue.severity,
+              screenName,
+              principle: issue.principle,
+              persona: issue.persona,
+              evidence: issue.evidence,
+              confidence: issue.confidence,
+              recommendation: issue.recommendation,
+              stepNumber: step,
+              evidencePath,
+            };
+            await appendIssue(this.auditConfig.outputDir, persisted);
+            return persisted;
+          }),
+        );
       }
 
       // ── Annotate the screenshot (every step, not just issues) ──
@@ -491,15 +491,35 @@ export class AuditExecutor extends TaskExecutor {
     await appendStep(this.auditConfig.outputDir, record);
   }
 
-  private async finalize(partialReason?: string): Promise<void> {
+  private async finalize(partialReason?: AuditPartialReason): Promise<void> {
     // Timings JSON export
     const summary = summarize(this.timings, this.auditConfig.model);
     const timingsPath = path.join(this.auditConfig.outputDir, 'timings.json');
-    await writeFile(
-      timingsPath,
-      JSON.stringify({ summary, timings: this.timings }, null, 2),
-      'utf-8',
-    );
+    const reportPath = path.join(this.auditConfig.outputDir, 'report.md');
+
+    // report.md rendering is Group 13 — for now, leave a stub that points
+    // the user at the JSONL files.
+    const stub = `# Audit Report (stub)
+
+This audit produced ${this.timings.length} step(s) and ${this.issueCounter} issue(s).
+
+The full Markdown report renderer is Group 13 (not yet implemented).
+
+Until then, consume the raw artifacts:
+
+- \`steps.jsonl\` — one JSON line per step (timing, action, reasoning)
+- \`issues.jsonl\` — one JSON line per reported UX issue
+- \`timings.json\` — P50/P95/avg + token + cost summary
+- \`annotated/step-NN.jpg\` — per-step annotated screenshots
+- \`screenshots/ISSUE-NNN.jpg\` — issue evidence (content-hash deduped)
+
+${partialReason ? `\n**Partial run**: ${partialReason}\n` : ''}
+`;
+
+    await Promise.all([
+      writeFile(timingsPath, JSON.stringify({ summary, timings: this.timings }, null, 2), 'utf-8'),
+      writeFile(reportPath, stub, 'utf-8'),
+    ]);
 
     // Console summary (P50/P95/avg + cost)
     console.log(pc.cyan('\n⏱️  Performance summary:'));
@@ -533,27 +553,6 @@ export class AuditExecutor extends TaskExecutor {
       console.log(pc.yellow(`\n⚠️  Partial report written (reason: ${partialReason})`));
     }
     console.log(pc.dim(`\n📁 Report: ${path.resolve(this.auditConfig.outputDir)}`));
-
-    // report.md rendering is Group 13 — for now, leave a stub that points
-    // the user at the JSONL files.
-    const reportPath = path.join(this.auditConfig.outputDir, 'report.md');
-    const stub = `# Audit Report (stub)
-
-This audit produced ${this.timings.length} step(s) and ${this.issueCounter} issue(s).
-
-The full Markdown report renderer is Group 13 (not yet implemented).
-
-Until then, consume the raw artifacts:
-
-- \`steps.jsonl\` — one JSON line per step (timing, action, reasoning)
-- \`issues.jsonl\` — one JSON line per reported UX issue
-- \`timings.json\` — P50/P95/avg + token + cost summary
-- \`annotated/step-NN.jpg\` — per-step annotated screenshots
-- \`screenshots/ISSUE-NNN.jpg\` — issue evidence (content-hash deduped)
-
-${partialReason ? `\n**Partial run**: ${partialReason}\n` : ''}
-`;
-    await writeFile(reportPath, stub, 'utf-8');
   }
 
   // ── Driver lifecycle — delegate to parent's maestro ──────────
@@ -595,49 +594,50 @@ ${partialReason ? `\n**Partial run**: ${partialReason}\n` : ''}
       .replace(/[^a-zA-Z0-9-]/g, '_');
     this.lockPath = path.join(LOCK_DIR, `phone-use-audit-${key}.lock`);
 
-    if (existsSync(this.lockPath)) {
-      try {
-        const pidStr = readFileSync(this.lockPath, 'utf-8').trim();
-        const pid = parseInt(pidStr, 10);
-        if (Number.isInteger(pid) && isProcessAlive(pid)) {
-          throw new AuditError(
-            'E_CONCURRENT_RUN',
-            `Another phone-use audit (pid ${pid}) is already running on this device. Wait for it to finish or kill the other process.`,
-          );
-        }
-        // Stale lockfile — claim it.
-      } catch (err) {
-        if (isAuditError(err)) throw err;
-        // Unreadable lockfile — proceed (best-effort)
+    // Read-before-write without a TOCTOU existsSync gate: missing file throws
+    // ENOENT, which we treat as "no lock held".
+    try {
+      const pidStr = readFileSync(this.lockPath, 'utf-8').trim();
+      const pid = parseInt(pidStr, 10);
+      if (Number.isInteger(pid) && isProcessAlive(pid)) {
+        throw new AuditError(
+          'E_CONCURRENT_RUN',
+          `Another phone-use audit (pid ${pid}) is already running on this device. Wait for it to finish or kill the other process.`,
+        );
+      }
+      // Stale lockfile — fall through and claim it.
+    } catch (err) {
+      if (isAuditError(err)) throw err;
+      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
+        // Unreadable lockfile for reasons other than "doesn't exist" —
+        // best-effort: continue and try to overwrite.
       }
     }
 
     writeFileSync(this.lockPath, String(process.pid), 'utf-8');
     this.exitHandler = () => {
-      if (this.lockPath && existsSync(this.lockPath)) {
-        try {
-          unlinkSync(this.lockPath);
-        } catch {
-          /* ignore */
-        }
-      }
+      this.unlinkLockSilently();
     };
     process.on('exit', this.exitHandler);
   }
 
   private releaseLock(): void {
-    if (this.lockPath && existsSync(this.lockPath)) {
-      try {
-        unlinkSync(this.lockPath);
-      } catch {
-        /* ignore */
-      }
-    }
+    this.unlinkLockSilently();
     if (this.exitHandler) {
       process.removeListener('exit', this.exitHandler);
       this.exitHandler = null;
     }
     this.lockPath = null;
+  }
+
+  /** Delete the lockfile, tolerating ENOENT and other benign errors. */
+  private unlinkLockSilently(): void {
+    if (!this.lockPath) return;
+    try {
+      unlinkSync(this.lockPath);
+    } catch {
+      /* ENOENT / EACCES / race — lockfile is gone or we can't clean up; either way, move on. */
+    }
   }
 
   // ── Output dir + header ──────────────────────────────────────
@@ -681,6 +681,3 @@ function extractTargetFromDecision(decision: AgentDecision): string | undefined 
   return undefined;
 }
 
-// Unused imports kept for future use by Group 14 CLI wiring
-void createHash;
-void mkdirSync;

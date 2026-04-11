@@ -95,8 +95,16 @@ export class AuditAgent extends TaskAgent {
    * (including the degraded fallback path).
    */
   async decideAudit(ctx: AuditAgentContext): Promise<AuditStepResult> {
+    // Parse the tree ONCE per step and flow it through both buildUserContent
+    // (for the prompt tree block) and toStepResult (so the executor can reuse
+    // it for fingerprinting and nav-target extraction). Previously this was
+    // called twice per step.
+    const parsedTree = ctx.accessibilityTree
+      ? parseAccessibilityTreeDetailed(ctx.accessibilityTree)
+      : null;
+
     const systemPrompt = this.buildAuditSystemPrompt();
-    const userContent = await this.buildUserContent(ctx);
+    const userContent = await this.buildUserContent(ctx, parsedTree);
 
     await this.rateLimiter.acquire();
 
@@ -123,7 +131,7 @@ export class AuditAgent extends TaskAgent {
         // If the race already resolved via timeout, drop the result silently.
         if (timedOut) throw new Error('aborted');
         this.fallbackStreak = 0;
-        return this.toStepResult(result.object, result.usage, false, ctx);
+        return this.toStepResult(result.object, result.usage, false, parsedTree);
       } catch (err) {
         // After timeout, the aiCall must NOT mutate state or throw anything
         // other than an already-settled marker. Short-circuit here.
@@ -140,7 +148,7 @@ export class AuditAgent extends TaskAgent {
             );
           }
           // Degraded path: take just a navigation action so the step isn't wasted.
-          return await this.fallbackNavOnly(ctx, userContent, systemPrompt, abortController.signal);
+          return await this.fallbackNavOnly(parsedTree, userContent, systemPrompt, abortController.signal);
         }
         throw err;
       }
@@ -183,7 +191,7 @@ export class AuditAgent extends TaskAgent {
     obj: AuditDecision,
     usage: { inputTokens?: number; outputTokens?: number; cachedInputTokens?: number } & Record<string, unknown>,
     usedFallback: boolean,
-    ctx: AuditAgentContext,
+    parsedTree: ParsedTree | null,
   ): AuditStepResult {
     // Map audit schema's navigation to the executor's AgentDecision shape
     const nav = obj.navigation;
@@ -219,9 +227,7 @@ export class AuditAgent extends TaskAgent {
       reasoning: obj.reasoning,
       progress: obj.progress,
       onboardingDetected: obj.onboardingDetected === true,
-      parsedTree: ctx.accessibilityTree
-        ? parseAccessibilityTreeDetailed(ctx.accessibilityTree)
-        : undefined,
+      parsedTree: parsedTree ?? undefined,
       usage: {
         inputTokens: Number(usage?.inputTokens ?? 0),
         outputTokens: Number(usage?.outputTokens ?? 0),
@@ -237,7 +243,7 @@ export class AuditAgent extends TaskAgent {
    * a minimal nav-only prompt, parse the first JSON blob.
    */
   private async fallbackNavOnly(
-    ctx: AuditAgentContext,
+    parsedTree: ParsedTree | null,
     userContent: UserContentPart[],
     _systemPrompt: string,
     abortSignal?: AbortSignal,
@@ -273,9 +279,7 @@ export class AuditAgent extends TaskAgent {
       reasoning: `[FALLBACK] ${reasoning} (target: ${target})`,
       progress: 0,
       onboardingDetected: false,
-      parsedTree: ctx.accessibilityTree
-        ? parseAccessibilityTreeDetailed(ctx.accessibilityTree)
-        : undefined,
+      parsedTree: parsedTree ?? undefined,
       usage: {
         inputTokens: Number(response.usage?.inputTokens ?? 0),
         outputTokens: Number(response.usage?.outputTokens ?? 0),
@@ -286,11 +290,11 @@ export class AuditAgent extends TaskAgent {
   }
 
   /** Build the per-step user message: image + tree block + exploration state. */
-  private async buildUserContent(ctx: AuditAgentContext): Promise<UserContentPart[]> {
+  private async buildUserContent(
+    ctx: AuditAgentContext,
+    parsed: ParsedTree | null,
+  ): Promise<UserContentPart[]> {
     const imageBuffer = await optimizeImage(ctx.screenshotBuffer);
-    const parsed = ctx.accessibilityTree
-      ? parseAccessibilityTreeDetailed(ctx.accessibilityTree)
-      : null;
 
     const treeBlock = buildTreeBlock(parsed);
     const stateBlock = this.buildExplorationStateBlock(ctx, parsed?.grade ?? 'empty');

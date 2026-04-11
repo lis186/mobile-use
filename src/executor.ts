@@ -11,7 +11,7 @@ import { XCTestClient } from './xctest.js';
 import { TaskAgent } from './agent.js';
 import type { TaskConfig, AgentDecision, ExecutionResult } from './types.js';
 
-function sleep(ms: number): Promise<void> {
+export function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 

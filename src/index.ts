@@ -356,8 +356,13 @@ async function runAuditCommand(config: AuditConfig): Promise<void> {
   console.log('═'.repeat(50) + '\n');
 
   if (!result.success) {
+    // partialReason is now AuditPartialReason; map E_UNEXPECTED onto a real
+    // AuditError code so the CLI formatter gets a clean signal.
+    const code = result.partialReason && result.partialReason !== 'E_UNEXPECTED'
+      ? result.partialReason
+      : 'E_APP_CRASHED';
     throw new AuditError(
-      (result.partialReason as never) ?? 'E_APP_CRASHED',
+      code,
       'Audit did not complete successfully. See the partial report at the path above.',
     );
   }
