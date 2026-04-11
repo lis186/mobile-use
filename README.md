@@ -221,6 +221,55 @@ The AI can perform these actions on your device:
 | `launchApp` | Switch to another app | `launchApp("com.other.app")` |
 | `stopApp` | Close an app | `stopApp("com.other.app")` |
 
+## Autonomous UX Audit (Phase 1)
+
+`phone-use audit` explores an iOS 26 simulator app and writes a Markdown
+report grounded in Don Norman's principles, Nielsen's heuristics, and
+Apple's Human Interface Guidelines. Every step produces an annotated
+screenshot so the final report is self-explanatory.
+
+```bash
+# Minimal invocation — audits the Settings app for 25 steps on the
+# currently-booted iOS 26 simulator.
+phone-use audit com.apple.Preferences \
+  --runner xctest \
+  --device <simulator-udid> \
+  --max-steps 25 \
+  --model gemini-2.5-flash
+
+# Attach to an already-running app (skip the launch step — useful for
+# pre-authenticated state).
+phone-use audit jp.naver.line --runner xctest --skip-launch
+
+# Focus the audit on a specific feature area instead of wandering.
+phone-use audit com.apple.Maps \
+  --runner xctest \
+  --scope "direction search flow" \
+  --max-steps 20
+```
+
+Output lands under the current working directory by default
+(`./audit-output/<timestamp>-<bundleId>/`). Paths passed to
+`--output-dir` are also resolved relative to the CWD — so if you
+`cd ~/projects/audits` first, the report lands there regardless of
+where `phone-use` is installed. Each run directory contains:
+
+- `report.md` — the full audit report with issues grouped by severity
+- `annotated/step-NN.jpg` — every step's screenshot with a red marker
+  and a "why I tapped here" card embedded in the image
+- `steps.jsonl` / `issues.jsonl` — append-only structured logs
+- `timings.json` — per-segment P50/P95/avg latency and token cost
+
+Screenshots may contain personal data (account names, chat content,
+location). `audit-output/` is gitignored by default — share individual
+reports manually on a per-run basis rather than checking them in.
+
+See `docs/audit-errors.md` for every `AuditError` code, the most common
+causes, and what to try first when a run fails.
+
+**Phase 1 scope**: iOS 26 Simulator only via the `xctest` runner.
+Physical device audit is a Phase 2 feature.
+
 ## Physical iOS Device Setup
 
 ### Prerequisites
