@@ -177,12 +177,10 @@ openspec/changes/add-mobile-ux-audit/
 - **Booted simulator**: `iPhone 16 Pro (26.2)` UDID `47C95D20-2AF0-424C-95EC-0FB20D090BB8` — **still booted at handoff time**, with `Simulator.app` open. `xcodebuild` has already built the maestro driver XCTest bundle and cached it at `/tmp/maestro-driver-build/Build/Products/maestro-driver-ios_iphonesimulator26.2-arm64-x86_64.xctestrun`. Next audit run will skip the build step.
 - **Physical device**: iPhone 15 Pro Max on iOS 26.3.1 is connected via USB but **not used in Phase 1** (Decision 20).
 - **API keys**: `GOOGLE_GENERATIVE_AI_API_KEY` and `OPENAI_API_KEY` present in shell env (NOT in `.env` — `.env.example` is a Group 19 task that hasn't been done yet).
-- **Gemini quota** (⚠️ revised 2026-04-12 — old note said 15 RPM): Gemini 2.5 Flash free tier is actively throttling at a much tighter budget than the old 15 RPM assumption. Two back-to-back 2026-04-12 dogfood attempts both tripped `generate_content_free_tier_requests` with `retry in 20–28 s`:
-  - Attempt 1 (`--rpm-limit 12`): survived 5 steps before the 6th call hit `limit: 5` per sliding window
-  - Attempt 2 (`--rpm-limit 4`): cold-started into `limit: 20` because the previous attempt's window had not cleared; step 1 died
-  - `--max-retries 1` (the default) *doubles* per-step call count when a retry fires, which eats the window faster than the rate limiter can recover. Prefer `--max-retries 0` for free-tier runs.
-  - Safe free-tier settings next session: `--rpm-limit 5 --max-retries 0` plus a ≥ 60-s cool-down after any prior failed run before retrying.
-  - Long-term fix: upgrade to Gemini paid tier (or swap to a different model with less aggressive free-tier throttling) so Group 17 dogfood is not quota-gated.
+- **Gemini quota** (⚠️ revised 2026-04-12 — old note said 15 RPM, it's wrong): the blocker is NOT the RPM limit, it's the **RPD (daily request)** budget on `gemini-2.5-flash` free tier. Three attempts today — `--rpm-limit` 12, 4, and 5 — all died on `generate_content_free_tier_requests`. The decisive data point: attempt #3 ran 23 minutes after attempt #2 and still died on its very first call, which rules out any 60-second sliding-window explanation. See §5A for the full table and the revised lesson.
+  - Today's daily budget is gone. Next working window is after UTC midnight.
+  - Safe settings for a clean daily budget: `--rpm-limit 5 --max-retries 0`. One 25-step run is ~25–30 calls and should fit under the free-tier RPD ceiling (whatever it is — the API doesn't tell us the exact number, only that we crossed it).
+  - Long-term fix: move off free tier (paid Gemini tier, or try `--model gemini-2.5-flash-lite` which may have its own bucket — untested).
 - **Unit tests**: `npm test` → **107/107** passing in ~2 s (one new test added in `540c37f`).
 - **Typecheck**: `npx tsc --noEmit` clean.
 - **Build**: `npm run build` produces `dist/` cleanly.
@@ -273,9 +271,24 @@ Outcome: 5 steps executed, 6th call hit free-tier throttle, partial report writt
 - **OBSERVATION-C verified FIXED** — step 1 decision prose: *"I am starting the exploration of the settings app by tapping on '一般' to navigate to a common settings section, **while avoiding account login flows for now**."* The new `EXPLORATION ANTI-PATTERNS` prompt section is steering the agent the way we wanted, on the first screen that previously walked straight into the Apple Account sign-in wall.
 - **Real issue sample** — step 4 caught an iOS-version-detail overlay that has no explicit Done/X button (`confidence 90`, Nielsen:User control). Plausible, not a false positive. Not enough data yet to compute a real FP rate.
 
-### Why the rerun (`--rpm-limit 4`) failed even harder
+### Why every rerun kept failing — it's the DAILY quota, not RPM
 
-The free-tier limit is a 60-second sliding window. Attempt #1 had already filled the window when attempt #2 started, so attempt #2's first call saw `limit: 20` (a larger number than attempt #1's `limit: 5` — same metric, different point in the window's accumulated budget) and died on step 1. **Lesson**: after a quota-blocked run, wait at least 60 s before retrying. Also drop `--max-retries` to 0 to stop the AI SDK from turning one failed call into two billed calls.
+Three attempts today, progressively more conservative, all died on the same `generate_content_free_tier_requests` metric:
+
+| Attempt | `--rpm-limit` | `--max-retries` | Result |
+|---|---|---|---|
+| 1 | 12 | 1 (default) | 5 steps ran, step 6 tripped quota, `retry in 28 s` |
+| 2 | 4 | 1 (default) | step 1 tripped quota, `retry in 20 s` |
+| 3 | 5 | **0** | step 1 tripped quota, `retry in 31 s`, **23 minutes** after attempt #2 |
+
+A 23-minute gap is more than twenty 1-minute sliding windows. If the limit were truly per-minute, attempt #3 could not have failed on its very first call. The only explanation that fits the data is that the blocker is the **daily** request budget on Gemini 2.5 Flash free tier, not the per-minute RPM limit. The "retry in Ns" number in the error message is a canned API hint that does NOT reflect the real daily-quota reset time (daily resets on UTC midnight).
+
+**Revised lesson**: free-tier quota on `gemini-2.5-flash` is bounded by (RPM ∩ RPD). `--rpm-limit` only protects you from the RPM side; the RPD side will block Group 17 dogfood the moment you burn through the day's allowance, regardless of how slowly you pace calls. Today the budget was exhausted by (smoke test) + (3 dogfood attempts) + probably some earlier foundation testing.
+
+**What to do next session**:
+- If it is after UTC midnight, the RPD quota has reset and `--rpm-limit 5 --max-retries 0` should work for a single 25-step run (~125 calls when counting retries = 0). Avoid running the same dogfood twice in one day.
+- If the quota is still exhausted: either (a) use a different API key / project, (b) upgrade to Gemini paid tier, or (c) try `--model gemini-2.5-flash-lite` or `--model gemini-2.0-flash-exp` which *may* have a separate RPD bucket (untested).
+- Do NOT bother retrying with smaller RPM — it does not help once the daily bucket is gone.
 
 ### Path forward for Group 17.1 on the next session
 
