@@ -4,6 +4,7 @@
  */
 
 import 'dotenv/config';
+import * as path from 'node:path';
 import { Command } from 'commander';
 import pc from 'picocolors';
 import ora, { type Ora } from 'ora';
@@ -14,10 +15,12 @@ import {
   ensureMaestroIosDeviceInstalled,
   isMaestroIosDeviceInstalled,
 } from './utils/install-maestro.js';
-import type { TaskConfig, RunnerType } from './types.js';
+import type { TaskConfig, RunnerType, AuditConfig } from './types.js';
 import { inferProvider, getApiConfig as getApiConfigBase } from './cli/api-config.js';
+import { AuditError, isAuditError } from './errors/audit-errors.js';
 
 const DEFAULT_MAX_STEPS = 100;
+const DEFAULT_AUDIT_MAX_STEPS = 25;
 
 // Handle graceful shutdown
 let isShuttingDown = false;
@@ -201,6 +204,154 @@ program
 
     process.exit(result.success ? 0 : 1);
   });
+
+// ── audit command (Phase 1: iOS 26 simulator only) ─────────────────
+program
+  .command('audit')
+  .description('Autonomous UX audit of a mobile app (Phase 1: iOS 26 simulator only)')
+  .argument('<bundleId>', 'App bundle ID (e.g., com.apple.Preferences)')
+  .option('--runner <type>', 'Runner backend (Phase 1: xctest only)', 'xctest')
+  .option('--device <id>', 'Simulator device UDID (defaults to booted simulator)')
+  .option('--ios-device <udid>', '[Phase 2] Physical iOS device UDID — not supported in Phase 1')
+  .option('--team-id <id>', '[Phase 2] Apple Developer Team ID')
+  .option('--xctestrun-path <path>', 'Path to .xctestrun file (optional, for xctest runner)')
+  .option('--language <lang>', 'Device UI language (e.g., "zh-TW")')
+  .option('--scope <area>', 'Focus the audit on a specific feature area (e.g., "checkout flow")')
+  .option('-m, --max-steps <number>', 'Maximum steps before timeout', String(DEFAULT_AUDIT_MAX_STEPS))
+  .option('--model <name>', 'AI model to use', 'gemini-2.5-flash')
+  .option('--skip-launch', 'Attach to foreground app instead of launching (for pre-authenticated state)', false)
+  .option('--output-dir <path>', 'Output directory for the report and evidence')
+  .option('--stable-timeout <ms>', 'Max wait for screen stability after a navigation action', '2000')
+  .option('--max-retries <n>', 'AI SDK maxRetries per call (rate limiter handles bursts; default 1)', '1')
+  .option('--rpm-limit <n>', 'Gemini requests-per-minute cap (default 12 for free tier headroom)', '12')
+  .option('--token-budget <n>', 'Warn if total input tokens exceed this budget', '200000')
+  .option('--hard-timeout <ms>', 'Hard per-step timeout for a single AI call', '45000')
+  .option('--live', 'Open a local live viewer in the browser while the audit runs', false)
+  .option('--live-port <port>', 'Port for the --live viewer HTTP server', '7330')
+  .action(async (bundleIdArg: string, options: Record<string, unknown>) => {
+    try {
+      const config = buildAuditConfig(bundleIdArg, options);
+      await runAuditCommand(config);
+      process.exit(0);
+    } catch (err) {
+      formatAuditError(err);
+      process.exit(1);
+    }
+  });
+
+/**
+ * Build a validated AuditConfig from raw CLI options.
+ * Enforces Phase 1 scope (iOS 26 simulator only) and defaults.
+ */
+function buildAuditConfig(bundleId: string, options: Record<string, unknown>): AuditConfig {
+  if (!bundleId) {
+    throw new Error('audit: bundleId is required. Usage: phone-use audit <bundleId>');
+  }
+
+  // Phase 1 scope gate: reject physical device attempts with a clear hint.
+  if (options.iosDevice) {
+    throw new AuditError(
+      'E_DRIVER_NOT_READY',
+      'Physical device audit is a Phase 2 feature. Phase 1 targets iOS 26 simulator only. Run the audit against a booted simulator instead (drop --ios-device).',
+    );
+  }
+  const runner = (options.runner as RunnerType) ?? 'xctest';
+  if (runner === 'wda' || runner === 'maestro-runner') {
+    throw new AuditError(
+      'E_DRIVER_NOT_READY',
+      `Runner "${runner}" is a Phase 2 feature. Phase 1 targets iOS 26 simulator via --runner xctest.`,
+    );
+  }
+
+  const maxSteps = parseInt(String(options.maxSteps ?? DEFAULT_AUDIT_MAX_STEPS), 10);
+  if (!Number.isFinite(maxSteps) || maxSteps < 1) {
+    throw new Error('audit: --max-steps must be a positive integer');
+  }
+  if (maxSteps > 40) {
+    console.log(
+      pc.yellow(
+        `\n⚠️  --max-steps=${maxSteps} is higher than the 25-step default. ` +
+          `Expect longer wall-clock and higher cost.`,
+      ),
+    );
+  }
+
+  const rpmLimit = parseInt(String(options.rpmLimit ?? 12), 10);
+  if (!Number.isInteger(rpmLimit) || rpmLimit < 1) {
+    throw new Error('audit: --rpm-limit must be a positive integer');
+  }
+
+  const maxRetries = parseInt(String(options.maxRetries ?? 1), 10);
+  if (!Number.isInteger(maxRetries) || maxRetries < 0) {
+    throw new Error('audit: --max-retries must be a non-negative integer');
+  }
+
+  // API key resolution reuses the run-command helper, which exits the process
+  // with a formatted error on failure — that gives us the same UX as `run`.
+  const { defaultModel } = getApiConfig(options.model as string | undefined);
+
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+  const outputDir = options.outputDir
+    ? path.resolve(process.cwd(), String(options.outputDir))
+    : path.resolve(process.cwd(), `audit-output/${timestamp}-${bundleId}`);
+
+  return {
+    bundleId,
+    runner,
+    deviceId: options.device as string | undefined,
+    language: options.language as string | undefined,
+    scope: options.scope as string | undefined,
+    model: String(options.model ?? defaultModel),
+    maxSteps,
+    outputDir,
+    stableTimeout: parseInt(String(options.stableTimeout ?? 2000), 10),
+    maxRetries,
+    rpmLimit,
+    tokenBudget: parseInt(String(options.tokenBudget ?? 200000), 10),
+    hardTimeout: parseInt(String(options.hardTimeout ?? 45000), 10),
+    skipLaunch: Boolean(options.skipLaunch),
+    live: Boolean(options.live),
+    livePort: parseInt(String(options.livePort ?? 7330), 10),
+  };
+}
+
+/**
+ * Placeholder for the full audit runner — wired up in Group 14 after the
+ * executor is built. Until then, print what would run and exit cleanly so
+ * the CLI is still usable for config verification.
+ */
+async function runAuditCommand(config: AuditConfig): Promise<void> {
+  console.log(pc.cyan('\n🔍 Audit configuration:'));
+  console.log(pc.dim(`   Bundle:       ${config.bundleId}`));
+  console.log(pc.dim(`   Runner:       ${config.runner}`));
+  console.log(pc.dim(`   Device:       ${config.deviceId ?? '(booted simulator)'}`));
+  console.log(pc.dim(`   Model:        ${config.model}`));
+  console.log(pc.dim(`   Max steps:    ${config.maxSteps}`));
+  console.log(pc.dim(`   RPM limit:    ${config.rpmLimit}`));
+  console.log(pc.dim(`   Hard timeout: ${config.hardTimeout} ms`));
+  console.log(pc.dim(`   Output:       ${config.outputDir}`));
+  console.log(pc.dim(`   Live viewer:  ${config.live ? `yes (port ${config.livePort})` : 'no'}`));
+
+  // The real executor wire-up lands in Group 14.
+  throw new AuditError(
+    'E_APP_NOT_INSTALLED',
+    'Audit executor is not yet wired. This is expected during Phase 1 development; Group 14 will complete the integration.',
+  );
+}
+
+/** Format an AuditError (or any error) for the CLI output. */
+function formatAuditError(err: unknown): void {
+  if (isAuditError(err)) {
+    console.error(pc.red(`\n❌ Audit failed: ${err.code}`));
+    console.error(pc.dim(`   ${err.hint}\n`));
+    return;
+  }
+  if (err instanceof Error) {
+    console.error(pc.red(`\n❌ ${err.message}\n`));
+    return;
+  }
+  console.error(pc.red(`\n❌ Unexpected error: ${String(err)}\n`));
+}
 
 program
   .command('install-maestro')

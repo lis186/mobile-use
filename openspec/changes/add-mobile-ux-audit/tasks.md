@@ -30,7 +30,7 @@
 - [x] 5A.1 Create `src/core/rate-limiter.ts` exporting `GeminiRateLimiter` class with sliding-window token bucket (default 12 RPM = free-tier 15 RPM with 20 % headroom)
 - [x] 5A.2 Implement `acquire()` that blocks when the window is full and prints a visible `⏸ Rate limit: waiting Xs (N/N)` console line so the user sees throttling is the reason for the pause
 - [x] 5A.3 Implement `remaining()` helper for budget visibility
-- [ ] 5A.4 Expose via `AuditConfig.rpmLimit`, wired from `--rpm-limit` CLI flag (default 12; paid-tier users pass a high number to effectively disable throttling)
+- [x] 5A.4 Expose via `AuditConfig.rpmLimit`, wired from `--rpm-limit` CLI flag (default 12; paid-tier users pass a high number to effectively disable throttling)
 
 ## 6. JSONL streaming writer
 
@@ -58,25 +58,25 @@
 
 > **DAG fix**: Extracted from former Group 11 so that CLI flags (`--skip-launch`, `--max-retries`, etc.) are defined before audit agent and executor groups that depend on them.
 
-- [ ] 8.1 Add `audit` subcommand skeleton to `src/index.ts` with all flags: `--runner` (default `xctest` per Decision 20), `--device` (default booted simulator), `--language`, `--max-steps` (default 25), `--model` (default `gemini-2.5-flash`), `--scope`, `--skip-launch`, `--output-dir`, `--stable-timeout` (default 2000), `--max-retries` (default 1 — rate limiter now handles bursts), `--rpm-limit` (default 12), `--token-budget` (default 200000), `--hard-timeout` (default 45000), `--live` (flag), `--live-port` (default 7330)
-- [ ] 8.1a If `--runner wda` or `--ios-device` is passed with `audit`, print "physical device audit is a Phase 2 feature" and exit with non-zero status
-- [ ] 8.2 Build `AuditConfig` object from parsed CLI flags (so downstream groups receive typed config, not raw args)
-- [ ] 8.3 Print a cost warning when `--max-steps > 40`
-- [ ] 8.4 Reuse `getApiConfig()` and runner-selection branches from the existing `run` command to avoid drift
+- [x] 8.1 Add `audit` subcommand skeleton to `src/index.ts` with all flags: `--runner` (default `xctest` per Decision 20), `--device` (default booted simulator), `--language`, `--max-steps` (default 25), `--model` (default `gemini-2.5-flash`), `--scope`, `--skip-launch`, `--output-dir`, `--stable-timeout` (default 2000), `--max-retries` (default 1 — rate limiter now handles bursts), `--rpm-limit` (default 12), `--token-budget` (default 200000), `--hard-timeout` (default 45000), `--live` (flag), `--live-port` (default 7330)
+- [x] 8.1a If `--runner wda` or `--ios-device` is passed with `audit`, print "physical device audit is a Phase 2 feature" and exit with non-zero status
+- [x] 8.2 Build `AuditConfig` object from parsed CLI flags (so downstream groups receive typed config, not raw args)
+- [x] 8.3 Print a cost warning when `--max-steps > 40`
+- [x] 8.4 Reuse `getApiConfig()` and runner-selection branches from the existing `run` command to avoid drift
 
 ## 9. Audit agent
 
-- [ ] 9.1 Create `src/audit-agent.ts` exporting `AuditAgent extends TaskAgent`
-- [ ] 9.2 Override `decide()` as stateless: single-turn `generateObject()` with audit schema, NO conversation history
-- [ ] 9.3 Build the audit system prompt with Norman/Nielsen framework, iOS HIG anchoring, anti-patterns, GOOD/BAD issue examples, system-dialog handling directive, and onboarding skip guidance
-- [ ] 9.4 Build exploration state block with visited list (top-10 + overflow count), unvisited targets, last 3 actions, phase, and tree grade
-- [ ] 9.5 Set `maxRetries` from `AuditConfig.maxRetries` on the AI SDK call (default 1 in audit mode; rate limiter handles bursts)
-- [ ] 9.6 Call `rateLimiter.acquire()` before every `generateObject` call
-- [ ] 9.7 Wrap `generateObject` in `Promise.race` against a hard per-step timeout (default 45 s from `AuditConfig.hardTimeout`); on timeout throw `AuditError('E_NETWORK_TIMEOUT', ...)`
-- [ ] 9.8 Wrap `generateObject` in try/catch; on `NoObjectGeneratedError` fall back to `generateText()` navigation-only prompt; track `fallbackStreak` and throw `E_MODEL_INCOMPATIBLE` at 3 consecutive
-- [ ] 9.9 Tighten Zod schema descriptions per OPS-2 POC findings: `progress` as `z.number().int().min(0).max(100)` with `.describe('integer 0-100 where 100 = audit goal reached')`; `x`/`y` as `z.number().int().min(0).max(100).optional()` with `.describe('percentage; ONLY use when text unavailable')`
-- [ ] 9.10 Drop issues with `confidence < 60` before returning the decision
-- [ ] 9.11 Tag steps where onboarding was detected as `onboarding: true`
+- [x] 9.1 Create `src/audit-agent.ts` exporting `AuditAgent extends TaskAgent`
+- [x] 9.2 Override `decide()` as stateless: single-turn `generateObject()` with audit schema, NO conversation history
+- [x] 9.3 Build the audit system prompt with Norman/Nielsen framework, iOS HIG anchoring, anti-patterns, GOOD/BAD issue examples, system-dialog handling directive, and onboarding skip guidance
+- [x] 9.4 Build exploration state block with visited list (top-10 + overflow count), unvisited targets, last 3 actions, phase, and tree grade
+- [x] 9.5 Set `maxRetries` from `AuditConfig.maxRetries` on the AI SDK call (default 1 in audit mode; rate limiter handles bursts)
+- [x] 9.6 Call `rateLimiter.acquire()` before every `generateObject` call
+- [x] 9.7 Wrap `generateObject` in `Promise.race` against a hard per-step timeout (default 45 s from `AuditConfig.hardTimeout`); on timeout throw `AuditError('E_NETWORK_TIMEOUT', ...)`
+- [x] 9.8 Wrap `generateObject` in try/catch; on `NoObjectGeneratedError` fall back to `generateText()` navigation-only prompt; track `fallbackStreak` and throw `E_MODEL_INCOMPATIBLE` at 3 consecutive
+- [x] 9.9 Tighten Zod schema descriptions per OPS-2 POC findings: `progress` as `z.number().int().min(0).max(100)` with `.describe('integer 0-100 where 100 = audit goal reached')`; `x`/`y` as `z.number().int().min(0).max(100).optional()` with `.describe('percentage; ONLY use when text unavailable')`
+- [x] 9.10 Drop issues with `confidence < 60` before returning the decision
+- [x] 9.11 Tag steps where onboarding was detected as `onboarding: true`
 
 ## 10. Audit executor — scaffold and lifecycle
 
