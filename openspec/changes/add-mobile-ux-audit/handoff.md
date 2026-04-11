@@ -1,18 +1,18 @@
 # Session Handoff — add-mobile-ux-audit
 
 > **Read this first.** This file captures everything the next session needs to resume work on `feature/mobile-ux-audit` without re-deriving context.
-> Last updated: **2026-04-12** after Phase 1.5 bug-fix commit + a second (quota-blocked) dogfood attempt.
+> Last updated: **2026-04-12** after Path B batch (SIGINT cancel + ops hygiene + docs + CI workflow).
 
 ---
 
 ## TL;DR
 
 - **Branch**: `feature/mobile-ux-audit` (lives in `/Users/justinlee/dev/phone-use`)
-- **Progress**: **80 / 111 tasks done** (~72 %). Foundation + AuditAgent + AuditExecutor + Report renderer + 107 unit tests + BUG-B/OBSERVATION-C fixes all committed.
-- **Status**: Phase 1.5 fixes landed on 2026-04-12 (`540c37f`). `tsc --noEmit` clean, `npm test` → 107/107 green. First 25-step Settings dogfood attempt on 2026-04-12 partially ran (steps 1–5 on attempt #1) but was cut short by Gemini 2.5 Flash free-tier rate limiting — the fix verification below was still extracted from that partial run.
-- **Last commit**: `540c37f fix(audit): Phase 1.5 smoke-test bug fixes (BUG-B + OBSERVATION-C)`
-- **Working tree**: clean (ignore local `audit-output/` dir)
-- **Next obvious step**: either (A) wait for Gemini quota cool-down + rerun 25-step dogfood with more conservative knobs (see §5A), (B) upgrade to Gemini paid tier so dogfood is not gated by free-tier throttling, or (C) switch to Path B (Group 14.2–14.4 SIGINT finalize + Group 16 run-mode regression + Group 19 ops readiness) while quota recovers.
+- **Progress**: **93 / 111 tasks done** (~84 %). Foundation + AuditAgent + AuditExecutor + Report renderer + 107 unit tests + BUG-B/OBSERVATION-C fixes + Path B batch (SIGINT cancel, error docs, CI workflow, README audit section) all committed.
+- **Status**: Path B landed on 2026-04-12 across three commits. `tsc --noEmit` clean, `npm test` → 107/107 green, `npm run build` produces `dist/` cleanly. The only tasks still blocked are those that need a live AI call: Group 16.2 (run-mode e2e), Group 17.1–17.10 (full dogfood) — both gated on the Gemini 2.5 Flash daily quota resetting at UTC midnight, or on a paid-tier upgrade.
+- **Last commit**: `9d7c194 docs(audit)+ci: Path B — Groups 18.1, 19.3`
+- **Working tree**: clean (ignore local `audit-output/` dir if present)
+- **Next obvious step**: wait for UTC midnight (~ 5 hours from 2026-04-12 19:20 UTC at time of writing) and then run Group 17.1 dogfood with `--rpm-limit 5 --max-retries 0` on a clean output directory. Everything else Phase 1 needs is already committed.
 
 ---
 
@@ -20,6 +20,11 @@
 
 ```
 feature/mobile-ux-audit HEAD:
+  9d7c194 docs(audit)+ci: Path B — Groups 18.1, 19.3
+  1476442 docs(audit): Path B — Groups 16.1/16.3, 18.2/18.3/18.4, 19.4
+  8197f7b feat(audit): Path B — Groups 14.2–14.4, 18.5, 19.1 (SIGINT cancel + ops hygiene)
+  edb8065 docs(openspec): handoff — Gemini daily quota, not RPM, is what's blocking dogfood
+  659c95a docs(openspec): update handoff with 540c37f status + Gemini quota findings
   540c37f fix(audit): Phase 1.5 smoke-test bug fixes (BUG-B + OBSERVATION-C)
   6b141f2 docs(openspec): session handoff file for add-mobile-ux-audit
   018bc80 feat(audit): Markdown report renderer (Group 13 + test 15.5)
@@ -35,7 +40,20 @@ feature/mobile-ux-audit HEAD:
   9cdc2d5 Improve executor parallelism and WDA connection resilience   ← pre-branch
 ```
 
-**What `540c37f` did**:
+**What the 2026-04-12 Path B batch did** (commits `8197f7b`, `1476442`, `9d7c194`):
+
+- **Group 14.2** — SIGINT now calls `AuditExecutor.cancel()` via a module-scope `auditCancelCallback` hook in `src/index.ts`. The executor's `runLoop` checks a `cancelRequested` flag at the top of every iteration and throws `E_USER_ABORTED` after the loop so the existing `try/finally` still runs `finalize()`. Run mode is unaffected (callback is null outside audit).
+- **Group 14.3** — `formatAuditError` now prints a `docs/audit-errors.md#<code>` deep link for every `AuditError`, plus a redacted stack for unknown errors.
+- **Group 14.4** — already met by `runAuditCommand` (success → exit 0 even with issues; hard failure → thrown `AuditError` → exit 1). No code change, marked done in tasks.md.
+- **Group 16.1 / 16.3** — diff sweep from `0786ea2..HEAD` on `src/agent.ts` + `src/executor.ts` confirms every change is a visibility bump (`private → protected`) or an `export`/extracted helper; no behavioural change to `run` mode. `tsc --noEmit` clean.
+- **Group 18.1** — project `CLAUDE.md` updated: project-structure list now covers the audit surface, new "when to use which command" table contrasts `run` vs `audit`, known-limitations paragraph captures the Phase 1 scope + Gemini quota story.
+- **Group 18.2 / 18.3 / 19.4** — new `README.md` "Autonomous UX Audit (Phase 1)" section: minimal invocation, `--skip-launch` LINE example, `--scope` example, explicit "outputs land in the CWD" note, report artefact layout, PII warning, pointer to error docs, Phase 1 scope note. `AuditConfig.outputDir` was already resolved via `path.resolve(process.cwd(), ...)` in `src/index.ts` — 19.4 is now documented, not just implemented.
+- **Group 18.4** — new `docs/audit-errors.md`: one section per `AuditErrorCode` (9 sections), each with what-it-means / common-causes / try-first triage. Deep-linked from the CLI formatter.
+- **Group 18.5** — `.gitignore` now excludes `audit-output/` with a PII comment.
+- **Group 19.1** — `.env.example` now leads with `GOOGLE_GENERATIVE_AI_API_KEY` (audit default) + commented `OPENAI_API_KEY`. README installation step swapped from `export OPENAI_API_KEY=...` to `cp .env.example .env`.
+- **Group 19.3** — new `.github/workflows/test.yml`: `tsc --noEmit` + `npm test` on `macos-latest` across Node 18 / 20 / 22, triggered on push to main/feature/**, and on PRs targeting main.
+
+**What `540c37f` did** (already done before this session — kept for history):
 - Schema: `screenName` moved from `auditBlockSchema` → top-level `auditDecisionSchema` (required, `.min(1)`)
 - Agent: `AuditStepResult` gains a top-level `screenName: string`; `toStepResult` reads `obj.screenName`; `fallbackNavOnly` path reports `'(fallback)'` so the executor never sees `undefined`
 - Executor: `runLoop` reads `result.screenName?.trim() || 'Screen@' + fingerprint`
