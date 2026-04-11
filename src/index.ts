@@ -335,27 +335,32 @@ function parseIntFlag(
 }
 
 /**
- * Placeholder for the full audit runner — wired up in Group 14 after the
- * executor is built. Until then, print what would run and exit cleanly so
- * the CLI is still usable for config verification.
+ * Top-level audit runner. Builds an AuditExecutor and runs its loop.
+ * Errors inside the executor are returned via AuditRunResult.partialReason
+ * or thrown as AuditError; formatAuditError() renders either shape.
  */
 async function runAuditCommand(config: AuditConfig): Promise<void> {
-  console.log(pc.cyan('\n🔍 Audit configuration:'));
-  console.log(pc.dim(`   Bundle:       ${config.bundleId}`));
-  console.log(pc.dim(`   Runner:       ${config.runner}`));
-  console.log(pc.dim(`   Device:       ${config.deviceId ?? '(booted simulator)'}`));
-  console.log(pc.dim(`   Model:        ${config.model}`));
-  console.log(pc.dim(`   Max steps:    ${config.maxSteps}`));
-  console.log(pc.dim(`   RPM limit:    ${config.rpmLimit}`));
-  console.log(pc.dim(`   Hard timeout: ${config.hardTimeout} ms`));
-  console.log(pc.dim(`   Output:       ${config.outputDir}`));
-  console.log(pc.dim(`   Live viewer:  ${config.live ? `yes (port ${config.livePort})` : 'no'}`));
+  const { apiKey, provider } = getApiConfig(config.model);
+  const { AuditExecutor } = await import('./audit-executor.js');
+  const executor = new AuditExecutor(config, apiKey, provider);
+  const result = await executor.executeAudit();
 
-  // The real executor wire-up lands in Group 14.
-  throw new AuditError(
-    'E_APP_NOT_INSTALLED',
-    'Audit executor is not yet wired. This is expected during Phase 1 development; Group 14 will complete the integration.',
-  );
+  console.log('\n' + '═'.repeat(50));
+  console.log(result.success ? pc.green('✅ AUDIT COMPLETE') : pc.yellow('⚠️  AUDIT PARTIAL'));
+  console.log(pc.dim(`Steps: ${result.stepsTotal}`));
+  console.log(pc.dim(`Issues: ${result.issuesFound}`));
+  if (result.partialReason) {
+    console.log(pc.dim(`Reason: ${result.partialReason}`));
+  }
+  console.log(pc.dim(`Report: ${result.outputDir}`));
+  console.log('═'.repeat(50) + '\n');
+
+  if (!result.success) {
+    throw new AuditError(
+      (result.partialReason as never) ?? 'E_APP_CRASHED',
+      'Audit did not complete successfully. See the partial report at the path above.',
+    );
+  }
 }
 
 /** Format an AuditError (or any error) for the CLI output. */

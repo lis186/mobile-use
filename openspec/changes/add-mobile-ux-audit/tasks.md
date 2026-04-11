@@ -82,28 +82,28 @@
 
 > **Split note**: Former monolithic Group 9 (13 tasks) split into Groups 10–12 per review recommendation.
 
-- [ ] 10.1 Create `src/audit-executor.ts` exporting `AuditExecutor extends TaskExecutor`
-- [ ] 10.2 Override `execute()` to run the audit loop while reusing the parent's driver lifecycle and action execution
-- [ ] 10.3 Acquire per-device lockfile on start (`/tmp/phone-use-audit-<device-id>.lock`), throw `E_CONCURRENT_RUN` if already locked; clean up on exit via `process.on('exit')`
-- [ ] 10.4 Create output directory `./audit-output/<timestamp>-<bundleId>/` with `screenshots/` subdirectory
-- [ ] 10.5 Honor `AuditConfig.skipLaunch` by skipping the parent's `launch()` call
+- [x] 10.1 Create `src/audit-executor.ts` exporting `AuditExecutor extends TaskExecutor`
+- [x] 10.2 Override `execute()` to run the audit loop while reusing the parent's driver lifecycle and action execution
+- [x] 10.3 Acquire per-device lockfile on start (`/tmp/phone-use-audit-<device-id>.lock`), throw `E_CONCURRENT_RUN` if already locked; clean up on exit via `process.on('exit')`
+- [x] 10.4 Create output directory `./audit-output/<timestamp>-<bundleId>/` with `screenshots/` subdirectory
+- [x] 10.5 Honor `AuditConfig.skipLaunch` by skipping the parent's `launch()` call
 
 ## 11. Audit executor — exploration and stability
 
-- [ ] 11.1 Maintain `visitedScreens: Map<string, VisitedScreen>` and update after every step using the fingerprint helper
-- [ ] 11.2 Maintain `unvisitedTargets: string[]` using `extractNavTargets()` on rich-tree screens
-- [ ] 11.3 Implement action-type-based stability wait: `NAVIGATION_ACTIONS` set → `waitForScreenStable(config.stableTimeout, 250)`, others → `getPostActionDelay()`
+- [x] 11.1 Maintain `visitedScreens: Map<string, VisitedScreen>` and update after every step using the fingerprint helper
+- [x] 11.2 Maintain `unvisitedTargets: string[]` using `extractNavTargets()` on rich-tree screens
+- [x] 11.3 Implement action-type-based stability wait: `NAVIGATION_ACTIONS` set → `waitForScreenStable(config.stableTimeout, 250)`, others → `getPostActionDelay()`
 
 ## 12. Audit executor — persistence, evidence, timing, and reliability
 
-- [ ] 12.1 Integrate JSONL streaming: call `appendStep` after each step, `appendIssue` for each issue
-- [ ] 12.2 Integrate evidence capture: call `saveEvidence` for each issue before executing navigation action
-- [ ] 12.3 Integrate annotation: call `annotateScreenshot` + `writeAnnotated` for every step (always on, not gated by `--live`)
-- [ ] 12.4 Integrate timing: wrap each segment with `performance.now()`, capture `response.usage`, push to `StepTiming[]`
-- [ ] 12.5 Write `timings.json` to output directory on finalize
-- [ ] 12.6 Print P50/P95/avg summary + cost estimate to console on completion
-- [ ] 12.7 Implement screenshot retry with exponential backoff (1s/2s/3s) and driver-liveness check; throw `E_DEVICE_LOCKED` or `E_DRIVER_NOT_READY` at 3 consecutive failures
-- [ ] 12.8 Detect app-crash condition (bundle no longer in foreground for 2 consecutive steps) and throw `E_APP_CRASHED`
+- [x] 12.1 Integrate JSONL streaming: call `appendStep` after each step, `appendIssue` for each issue
+- [x] 12.2 Integrate evidence capture: call `saveEvidence` for each issue before executing navigation action
+- [x] 12.3 Integrate annotation: call `annotateScreenshot` + `writeAnnotated` for every step (always on, not gated by `--live`)
+- [x] 12.4 Integrate timing: wrap each segment with `performance.now()`, capture `response.usage`, push to `StepTiming[]`
+- [x] 12.5 Write `timings.json` to output directory on finalize
+- [x] 12.6 Print P50/P95/avg summary + cost estimate to console on completion
+- [x] 12.7 Implement screenshot retry with exponential backoff (1s/2s/3s) and driver-liveness check; throw `E_DEVICE_LOCKED` or `E_DRIVER_NOT_READY` at 3 consecutive failures
+- [x] 12.8 Detect app-crash condition (bundle no longer in foreground for 2 consecutive steps) and throw `E_APP_CRASHED`
 
 ## 13. Report writer
 
@@ -120,7 +120,7 @@
 
 ## 14. CLI wiring (final integration)
 
-- [ ] 14.1 Wire `AuditExecutor` + `AuditAgent` into the `audit` subcommand action handler from Group 8
+- [x] 14.1 Wire `AuditExecutor` + `AuditAgent` into the `audit` subcommand action handler from Group 8
 - [ ] 14.2 Convert signal handlers to async to call `finalizeReport()` before exit
 - [ ] 14.3 Add CLI-level `AuditError` formatter: print code + hint + doc link for `AuditError`, raw stack for unknown errors
 - [ ] 14.4 Exit with code 0 on successful audit completion (even if issues were found) and code 1 only on hard failure

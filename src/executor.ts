@@ -24,37 +24,47 @@ function createSpinner(text: string): Ora {
   });
 }
 
+/**
+ * Build the low-level driver client for a given TaskConfig.
+ * Shared with AuditExecutor so the runner-selection branch only lives once.
+ */
+export function buildDriverFromTaskConfig(
+  config: TaskConfig,
+): MaestroClient | WDAClient | XCTestClient {
+  if (config.runner === 'xctest') {
+    return new XCTestClient({
+      simulatorId: config.deviceId ?? config.iosDevice?.udid ?? 'booted',
+      xctestrunPath: config.iosDevice?.appFile,
+      port: config.iosDevice?.driverPort ?? 22087,
+      bundleId: config.bundleId,
+    });
+  }
+  if (config.runner === 'wda' && config.iosDevice) {
+    return new WDAClient({
+      udid: config.iosDevice.udid,
+      teamId: config.iosDevice.teamId ?? '',
+      bundleId: config.bundleId,
+      port: config.iosDevice.driverPort ?? 8100,
+    });
+  }
+  return new MaestroClient({
+    bundleId: config.bundleId,
+    deviceId: config.deviceId,
+    iosDevice: config.iosDevice,
+    runner: config.runner,
+  });
+}
+
 export class TaskExecutor {
-  private maestro: MaestroClient | WDAClient | XCTestClient;
-  private agent: TaskAgent;
+  // Protected so AuditExecutor (Phase 1) can reuse the driver lifecycle,
+  // stability-wait loop, and executeAction dispatch without duplicating code.
+  protected maestro: MaestroClient | WDAClient | XCTestClient;
+  protected agent: TaskAgent;
   private config: TaskConfig;
 
   constructor(config: TaskConfig, apiKey: string, provider: 'google' | 'openai' = 'google') {
     this.config = config;
-
-    if (config.runner === 'xctest') {
-      this.maestro = new XCTestClient({
-        simulatorId: config.deviceId ?? config.iosDevice?.udid ?? 'booted',
-        xctestrunPath: config.iosDevice?.appFile, // reuse --app-file for xctestrun path
-        port: config.iosDevice?.driverPort ?? 22087,
-        bundleId: config.bundleId,
-      });
-    } else if (config.runner === 'wda' && config.iosDevice) {
-      this.maestro = new WDAClient({
-        udid: config.iosDevice.udid,
-        teamId: config.iosDevice.teamId ?? '',
-        bundleId: config.bundleId,
-        port: config.iosDevice.driverPort ?? 8100,
-      });
-    } else {
-      this.maestro = new MaestroClient({
-        bundleId: config.bundleId,
-        deviceId: config.deviceId,
-        iosDevice: config.iosDevice,
-        runner: config.runner,
-      });
-    }
-
+    this.maestro = buildDriverFromTaskConfig(config);
     this.agent = new TaskAgent(apiKey, config.model, provider);
   }
 
@@ -226,7 +236,7 @@ export class TaskExecutor {
     }
   }
 
-  private async waitForScreenStable(maxMs = 5000, intervalMs = 500): Promise<void> {
+  protected async waitForScreenStable(maxMs = 5000, intervalMs = 500): Promise<void> {
     const deadline = Date.now() + maxMs;
     let prevHash: string | null = null;
     let stableCount = 0;
@@ -253,7 +263,7 @@ export class TaskExecutor {
     // timed out — proceed anyway
   }
 
-  private getPostActionDelay(action: string): number {
+  protected getPostActionDelay(action: string): number {
     switch (action) {
       case 'launchApp':
       case 'stopApp':
@@ -270,7 +280,7 @@ export class TaskExecutor {
     }
   }
 
-  private async executeAction(decision: AgentDecision): Promise<void> {
+  protected async executeAction(decision: AgentDecision): Promise<void> {
     const params = decision.params || {};
 
     switch (decision.action) {
@@ -352,7 +362,7 @@ export class TaskExecutor {
     }
   }
 
-  private formatAction(decision: AgentDecision): string {
+  protected formatAction(decision: AgentDecision): string {
     const params = decision.params;
     if (!params) return decision.action;
 
