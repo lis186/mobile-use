@@ -1,18 +1,18 @@
 # Session Handoff — add-mobile-ux-audit
 
 > **Read this first.** This file captures everything the next session needs to resume work on `feature/mobile-ux-audit` without re-deriving context.
-> Last updated: **2026-04-11** after the first real smoke-test run against iOS 26 Simulator.
+> Last updated: **2026-04-12** after Phase 1.5 bug-fix commit + a second (quota-blocked) dogfood attempt.
 
 ---
 
 ## TL;DR
 
 - **Branch**: `feature/mobile-ux-audit` (lives in `/Users/justinlee/dev/phone-use`)
-- **Progress**: **80 / 111 tasks done** (~72 %). Foundation + AuditAgent + AuditExecutor + Report renderer + 106 unit tests all committed.
-- **Status**: End-to-end smoke test ran successfully on 2026-04-11. 5-step audit of `com.apple.Preferences` on iOS 26 Simulator produced valid `report.md`, `timings.json`, `steps.jsonl`, and 5 annotated JPEGs. 100 % `generateObject` parse rate, **$0.0012** real cost, 5.3 s median AI latency.
-- **Last commit**: `018bc80 feat(audit): Markdown report renderer (Group 13 + test 15.5)`
-- **Working tree**: clean
-- **Next obvious step**: choose between (A) logging smoke results + backlog items, (B) fixing the 2 real bugs found during smoke, (C) expanding dogfood to 15+ steps, (D) jumping to Group 19 ops readiness (`.env.example`, CI workflow).
+- **Progress**: **80 / 111 tasks done** (~72 %). Foundation + AuditAgent + AuditExecutor + Report renderer + 107 unit tests + BUG-B/OBSERVATION-C fixes all committed.
+- **Status**: Phase 1.5 fixes landed on 2026-04-12 (`540c37f`). `tsc --noEmit` clean, `npm test` → 107/107 green. First 25-step Settings dogfood attempt on 2026-04-12 partially ran (steps 1–5 on attempt #1) but was cut short by Gemini 2.5 Flash free-tier rate limiting — the fix verification below was still extracted from that partial run.
+- **Last commit**: `540c37f fix(audit): Phase 1.5 smoke-test bug fixes (BUG-B + OBSERVATION-C)`
+- **Working tree**: clean (ignore local `audit-output/` dir)
+- **Next obvious step**: either (A) wait for Gemini quota cool-down + rerun 25-step dogfood with more conservative knobs (see §5A), (B) upgrade to Gemini paid tier so dogfood is not gated by free-tier throttling, or (C) switch to Path B (Group 14.2–14.4 SIGINT finalize + Group 16 run-mode regression + Group 19 ops readiness) while quota recovers.
 
 ---
 
@@ -20,6 +20,8 @@
 
 ```
 feature/mobile-ux-audit HEAD:
+  540c37f fix(audit): Phase 1.5 smoke-test bug fixes (BUG-B + OBSERVATION-C)
+  6b141f2 docs(openspec): session handoff file for add-mobile-ux-audit
   018bc80 feat(audit): Markdown report renderer (Group 13 + test 15.5)
   71fd904 refactor(audit): simplify pass on Groups 10-12
   06e089d feat(audit): AuditExecutor loop + CLI wire-up (Groups 10-12, 14.1)
@@ -32,6 +34,13 @@ feature/mobile-ux-audit HEAD:
   d670e98 docs(openspec): propose add-mobile-ux-audit change
   9cdc2d5 Improve executor parallelism and WDA connection resilience   ← pre-branch
 ```
+
+**What `540c37f` did**:
+- Schema: `screenName` moved from `auditBlockSchema` → top-level `auditDecisionSchema` (required, `.min(1)`)
+- Agent: `AuditStepResult` gains a top-level `screenName: string`; `toStepResult` reads `obj.screenName`; `fallbackNavOnly` path reports `'(fallback)'` so the executor never sees `undefined`
+- Executor: `runLoop` reads `result.screenName?.trim() || 'Screen@' + fingerprint`
+- Prompt: new `EXPLORATION ANTI-PATTERNS` section tells the agent to back out of sign-in gates, external URLs, and payment/subscription walls, and to prefer unvisited top-level navigation
+- Tests: 5 audit-schema test cases updated to include top-level `screenName`; new test `screenName is required at top level (BUG-B fix)`; total **107/107** passing
 
 **Nothing unpushed except what's on this branch.** All work is local — never pushed to GitHub.
 
@@ -168,8 +177,13 @@ openspec/changes/add-mobile-ux-audit/
 - **Booted simulator**: `iPhone 16 Pro (26.2)` UDID `47C95D20-2AF0-424C-95EC-0FB20D090BB8` — **still booted at handoff time**, with `Simulator.app` open. `xcodebuild` has already built the maestro driver XCTest bundle and cached it at `/tmp/maestro-driver-build/Build/Products/maestro-driver-ios_iphonesimulator26.2-arm64-x86_64.xctestrun`. Next audit run will skip the build step.
 - **Physical device**: iPhone 15 Pro Max on iOS 26.3.1 is connected via USB but **not used in Phase 1** (Decision 20).
 - **API keys**: `GOOGLE_GENERATIVE_AI_API_KEY` and `OPENAI_API_KEY` present in shell env (NOT in `.env` — `.env.example` is a Group 19 task that hasn't been done yet).
-- **Gemini quota**: free tier, 15 RPM. Rate limiter defaults to 12 RPM.
-- **Unit tests**: `npm test` → 106/106 passing in ~2 s.
+- **Gemini quota** (⚠️ revised 2026-04-12 — old note said 15 RPM): Gemini 2.5 Flash free tier is actively throttling at a much tighter budget than the old 15 RPM assumption. Two back-to-back 2026-04-12 dogfood attempts both tripped `generate_content_free_tier_requests` with `retry in 20–28 s`:
+  - Attempt 1 (`--rpm-limit 12`): survived 5 steps before the 6th call hit `limit: 5` per sliding window
+  - Attempt 2 (`--rpm-limit 4`): cold-started into `limit: 20` because the previous attempt's window had not cleared; step 1 died
+  - `--max-retries 1` (the default) *doubles* per-step call count when a retry fires, which eats the window faster than the rate limiter can recover. Prefer `--max-retries 0` for free-tier runs.
+  - Safe free-tier settings next session: `--rpm-limit 5 --max-retries 0` plus a ≥ 60-s cool-down after any prior failed run before retrying.
+  - Long-term fix: upgrade to Gemini paid tier (or swap to a different model with less aggressive free-tier throttling) so Group 17 dogfood is not quota-gated.
+- **Unit tests**: `npm test` → **107/107** passing in ~2 s (one new test added in `540c37f`).
 - **Typecheck**: `npx tsc --noEmit` clean.
 - **Build**: `npm run build` produces `dist/` cleanly.
 
@@ -233,6 +247,56 @@ node /Users/justinlee/dev/phone-use/dist/index.js audit com.apple.Preferences \
 
 ---
 
+## 5A · 2026-04-12 session — Phase 1.5 fixes + dogfood attempt
+
+### Fixes landed (`540c37f`)
+
+Both bugs flagged in §6 are **FIXED** — see §0 for the per-file change summary. What this section adds is the *verification* pulled from the 2026-04-12 dogfood attempt before it was killed by rate limiting.
+
+### Partial dogfood evidence (2026-04-12, 5 steps before quota blew up)
+
+Command:
+
+```bash
+node dist/index.js audit com.apple.Preferences \
+  --runner xctest \
+  --device 47C95D20-2AF0-424C-95EC-0FB20D090BB8 \
+  --max-steps 25 \
+  --model gemini-2.5-flash \
+  --rpm-limit 12 \
+  --output-dir ./audit-output/settings-dogfood
+```
+
+Outcome: 5 steps executed, 6th call hit free-tier throttle, partial report written. The partial artefacts now live at `/tmp/settings-dogfood-partial-old/` (moved aside so the next run can start from a clean dir). The partial run was enough to verify both fixes:
+
+- **BUG-B verified FIXED** — screen names in the partial `report.md` read `關於本機`, `關於本機 > iOS 版本詳情`, `憑證信任設定`, etc. No `Screen@<fingerprint>` fallback strings were rendered, even though some steps emitted zero issues. Before `540c37f` these would have been hex-only.
+- **OBSERVATION-C verified FIXED** — step 1 decision prose: *"I am starting the exploration of the settings app by tapping on '一般' to navigate to a common settings section, **while avoiding account login flows for now**."* The new `EXPLORATION ANTI-PATTERNS` prompt section is steering the agent the way we wanted, on the first screen that previously walked straight into the Apple Account sign-in wall.
+- **Real issue sample** — step 4 caught an iOS-version-detail overlay that has no explicit Done/X button (`confidence 90`, Nielsen:User control). Plausible, not a false positive. Not enough data yet to compute a real FP rate.
+
+### Why the rerun (`--rpm-limit 4`) failed even harder
+
+The free-tier limit is a 60-second sliding window. Attempt #1 had already filled the window when attempt #2 started, so attempt #2's first call saw `limit: 20` (a larger number than attempt #1's `limit: 5` — same metric, different point in the window's accumulated budget) and died on step 1. **Lesson**: after a quota-blocked run, wait at least 60 s before retrying. Also drop `--max-retries` to 0 to stop the AI SDK from turning one failed call into two billed calls.
+
+### Path forward for Group 17.1 on the next session
+
+1. Confirm no recent Gemini run in the last 2 minutes (`date` + cross-check any other process).
+2. `rm -rf audit-output/settings-dogfood` (so JSONL writers start clean — they are append-only).
+3. Run:
+   ```bash
+   node dist/index.js audit com.apple.Preferences \
+     --runner xctest \
+     --device 47C95D20-2AF0-424C-95EC-0FB20D090BB8 \
+     --max-steps 25 \
+     --model gemini-2.5-flash \
+     --rpm-limit 5 \
+     --max-retries 0 \
+     --output-dir ./audit-output/settings-dogfood
+   ```
+4. Wall-clock budget to expect: ≥ 5 min of pacing + 5–7 s per AI call → plan for ~10–12 min. If a call still trips quota, `--rpm-limit 4` is the next step down; if *that* still trips, the run is gated on moving off free tier.
+5. On success: manually review report.md against `dogfood-runbook.md` Gate C (FP rate target < 20 %). Then Maps (17.2) and Safari (17.3).
+
+---
+
 ## 6 · Real bugs discovered during smoke (Phase 1.5 backlog)
 
 These are **NOT regressions of the audit work itself** — they're issues in adjacent code or design that the smoke run surfaced. Record them here so the next session doesn't re-discover them.
@@ -254,7 +318,7 @@ Step 3 action: tapText("Don't have an Apple Account?")
 
 **Scope**: Phase 1.5 (not blocking Phase 1 merge if dogfood FP rate is still < 20%).
 
-### BUG-B · Screen map uses fingerprint hex when AI omits the audit block
+### BUG-B · Screen map uses fingerprint hex when AI omits the audit block — ✅ **FIXED in `540c37f` (2026-04-12)**
 
 **Observed in** `/tmp/audit-smoke/report.md`:
 
@@ -275,7 +339,7 @@ Step 3 action: tapText("Don't have an Apple Account?")
 
 **Scope**: Phase 1 (fix before Group 17 dogfood) — this is small and the fix is obvious.
 
-### OBSERVATION-C · Agent picks login-wall exploration paths on first screen
+### OBSERVATION-C · Agent picks login-wall exploration paths on first screen — ✅ **FIXED in `540c37f` (2026-04-12)**
 
 The agent on step 2–5 chose to navigate the Apple Account sign-in flow from the Settings app, which on a fresh simulator immediately hits a login wall (`Sign in Manually` → `Don't have an Apple Account?` → email field → `繼續`). This is not a bug, but it's a poor exploration strategy for a general-purpose audit: the agent got trapped in a flow it can't complete.
 
@@ -391,9 +455,9 @@ Every non-trivial commit on this branch was reviewed by Codex (`codex:codex-resc
 
 ## 10 · Open questions carrying across sessions
 
-1. **Screen name propagation** (BUG-B above). Should `screenName` be moved out of the optional audit block into the top-level `AuditDecision`? My strong opinion: **yes, fix before Group 17 dogfood**. The audit block is optional (zero-issues case is common); the screen name is never optional.
+1. ~~**Screen name propagation** (BUG-B above).~~ ✅ Resolved in `540c37f`. `screenName` is now top-level required (`.min(1)`), fallback path reports `'(fallback)'`.
 
-2. **Onboarding detection** (OBSERVATION-C). The prompt already asks the agent to set `onboardingDetected=true` on tutorial screens, but the smoke test showed the agent happily walked into the Apple Account login flow. Need a stronger anti-pattern line about login walls.
+2. ~~**Onboarding detection** (OBSERVATION-C).~~ ✅ Resolved in `540c37f`. New `EXPLORATION ANTI-PATTERNS` prompt section covers login/sign-in/payment/identity-verification walls.
 
 3. **Live viewer scope** (Group 14A). The spec says it's Phase 1 but nothing in the smoke test needs it. Candidate for Phase 1.5 downshift if schedule is tight. Decision 18 rationale (Bret Victor / Jonathan Lipps / Don Norman) argues for "always-on annotation, live viewer opt-in" — so the current state (annotation always, no live viewer) is already philosophically consistent.
 
@@ -407,25 +471,25 @@ Every non-trivial commit on this branch was reviewed by Codex (`codex:codex-resc
 
 Pick one. Don't thrash.
 
-**Path A — Finish Phase 1 correctness** (recommended)
-1. Fix BUG-B (screenName out of optional block) — ~15 LOC
-2. Strengthen prompt anti-pattern (login-wall avoidance) — ~10 LOC
-3. Run a real 25-step dogfood audit of Settings (Group 17.1)
+**Path A — Finish Phase 1 correctness** (recommended, but quota-gated)
+1. ~~Fix BUG-B (screenName out of optional block)~~ — ✅ done in `540c37f`
+2. ~~Strengthen prompt anti-pattern (login-wall avoidance)~~ — ✅ done in `540c37f`
+3. Run a real 25-step dogfood audit of Settings (Group 17.1) — **see §5A for exact command and rate-limit settings**; the attempt on 2026-04-12 was killed by Gemini free-tier throttling after 5 steps. Either cool down ≥ 60 s and retry with `--rpm-limit 5 --max-retries 0`, or upgrade off free tier.
 4. Manually review FP rate (Gate C of `dogfood-runbook.md`)
 5. If FP rate < 20 %, tackle Maps (17.2) then Safari (17.3)
 
-**Path B — Finish Phase 1 completeness**
+**Path B — Finish Phase 1 completeness** (unblocks while Gemini quota recovers)
 1. Group 14.2–14.4 (async SIGINT finalize, already-mostly-done error format polish)
 2. Group 16 (run-mode regression verification)
 3. Group 19 (ops readiness — `.env.example`, CI workflow)
 4. Then return to Path A
 
 **Path C — Codex review first**
-1. Run Codex review on `018bc80` (Group 13 report renderer)
+1. Run Codex review on `018bc80` (Group 13 report renderer) and `540c37f` (Phase 1.5 fixes)
 2. Fix any findings
 3. Then pick Path A or B
 
-My recommendation: **Path A, starting with BUG-B**. The codebase is tested and wired; the remaining risk is quality of output. Fixing the screen-name bug first keeps the next dogfood report legible.
+My recommendation (updated 2026-04-12): **Path A step 3 only** — the hard code work is already done, the blocker is purely rate-limit. If a cool-down + conservative rerun still trips quota, flip to Path B and come back to dogfood after switching off Gemini free tier.
 
 ---
 
