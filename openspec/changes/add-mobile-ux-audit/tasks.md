@@ -107,16 +107,16 @@
 
 ## 13. Report writer
 
-- [ ] 13.1 Create `src/audit-report.ts` exporting `finalizeReport(outputDir)` which reads JSONL and renders Markdown
-- [ ] 13.2 Render header block (app, device, iOS version, runner, model, date, duration, step count with onboarding-excluded, coverage, cost estimate)
-- [ ] 13.3 Render severity summary table (High / Medium / Low counts) and one-line top-concern pointer
-- [ ] 13.4 Render each issue section: ID, severity, title, screen, principle(s), persona(s), confidence, step #, embedded annotated image, evidence (AI observation), AI reasoning, recommendation, and a "how to verify the fix" re-audit command
-- [ ] 13.5 Embed annotated screenshots (`annotated/step-NN.jpg`) in issue sections, NOT raw screenshots
-- [ ] 13.6 Render screen map as indented tree in discovery order; list onboarding screens separately as not counted
-- [ ] 13.7 Render performance summary table (P50 / P95 / avg per segment) and token cost
-- [ ] 13.8 Render "Next steps" section prioritizing High-severity fixes, offering scoped re-audit commands
-- [ ] 13.9 Render partial-report banner with `AuditError` code when run ended early
-- [ ] 13.10 Exclude onboarding-tagged steps from coverage summary
+- [x] 13.1 Create `src/audit-report.ts` exporting `finalizeReport(outputDir)` which reads JSONL and renders Markdown
+- [x] 13.2 Render header block (app, device, iOS version, runner, model, date, duration, step count with onboarding-excluded, coverage, cost estimate)
+- [x] 13.3 Render severity summary table (High / Medium / Low counts) and one-line top-concern pointer
+- [x] 13.4 Render each issue section: ID, severity, title, screen, principle(s), persona(s), confidence, step #, embedded annotated image, evidence (AI observation), AI reasoning, recommendation, and a "how to verify the fix" re-audit command
+- [x] 13.5 Embed annotated screenshots (`annotated/step-NN.jpg`) in issue sections, NOT raw screenshots
+- [x] 13.6 Render screen map as indented tree in discovery order; list onboarding screens separately as not counted
+- [x] 13.7 Render performance summary table (P50 / P95 / avg per segment) and token cost
+- [x] 13.8 Render "Next steps" section prioritizing High-severity fixes, offering scoped re-audit commands
+- [x] 13.9 Render partial-report banner with `AuditError` code when run ended early
+- [x] 13.10 Exclude onboarding-tagged steps from coverage summary
 
 ## 14. CLI wiring (final integration)
 
@@ -140,7 +140,7 @@
 - [x] 15.2 Test `screen-fingerprint.ts`: stability (same input → same output), sort invariance, sparse/empty fallback, 8-char hex format
 - [x] 15.3 Test `tree-parser.ts` grading: boundary cases at 0, 1, 2, 9, 10 elements
 - [x] 15.4 Test `schemas/audit.ts`: valid schema acceptance, evidence min(20) rejection, confidence range, optional audit block absence
-- [ ] 15.5 Test `audit-report.ts`: full report render, empty issues, partial-run banner, onboarding exclusion
+- [x] 15.5 Test `audit-report.ts`: full report render, empty issues, partial-run banner, onboarding exclusion
 - [x] 15.6 Test `step-timing.ts`: P50/P95/avg math with known inputs, cost estimation per model
 - [x] 15.7 Test `jsonl-writer.ts`: write and read-back round-trip, empty file handling
 - [x] 15.8 Test `evidence.ts`: hash dedup (2 identical buffers → 1 file), symlink creation

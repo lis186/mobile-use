@@ -34,6 +34,7 @@ import { appendStep, appendIssue } from './core/jsonl-writer.js';
 import { saveEvidence } from './core/evidence.js';
 import { annotateScreenshot, writeAnnotated } from './core/annotate.js';
 import { summarize } from './core/step-timing.js';
+import { finalizeReport } from './audit-report.js';
 import type {
   AuditConfig,
   TaskConfig,
@@ -80,6 +81,7 @@ export class AuditExecutor extends TaskExecutor {
   private exitHandler: (() => void) | null = null;
   private onboardingSteps = 0;
   private crashStreak = 0;
+  private startedAt: Date = new Date();
 
   constructor(config: AuditConfig, apiKey: string, provider: 'google' | 'openai' = 'google') {
     // Build a stub TaskConfig for the parent's driver setup. The parent will
@@ -112,6 +114,7 @@ export class AuditExecutor extends TaskExecutor {
    * Does NOT call the parent's execute() — this is the audit loop body.
    */
   async executeAudit(): Promise<AuditRunResult> {
+    this.startedAt = new Date();
     this.acquireLock();
     await this.initOutputDir();
 
@@ -492,34 +495,26 @@ export class AuditExecutor extends TaskExecutor {
   }
 
   private async finalize(partialReason?: AuditPartialReason): Promise<void> {
-    // Timings JSON export
+    // timings.json MUST be written before finalizeReport() reads it, so
+    // these two writes are sequenced (small serial cost, large clarity win).
     const summary = summarize(this.timings, this.auditConfig.model);
     const timingsPath = path.join(this.auditConfig.outputDir, 'timings.json');
-    const reportPath = path.join(this.auditConfig.outputDir, 'report.md');
+    await writeFile(
+      timingsPath,
+      JSON.stringify({ summary, timings: this.timings }, null, 2),
+      'utf-8',
+    );
 
-    // report.md rendering is Group 13 — for now, leave a stub that points
-    // the user at the JSONL files.
-    const stub = `# Audit Report (stub)
-
-This audit produced ${this.timings.length} step(s) and ${this.issueCounter} issue(s).
-
-The full Markdown report renderer is Group 13 (not yet implemented).
-
-Until then, consume the raw artifacts:
-
-- \`steps.jsonl\` — one JSON line per step (timing, action, reasoning)
-- \`issues.jsonl\` — one JSON line per reported UX issue
-- \`timings.json\` — P50/P95/avg + token + cost summary
-- \`annotated/step-NN.jpg\` — per-step annotated screenshots
-- \`screenshots/ISSUE-NNN.jpg\` — issue evidence (content-hash deduped)
-
-${partialReason ? `\n**Partial run**: ${partialReason}\n` : ''}
-`;
-
-    await Promise.all([
-      writeFile(timingsPath, JSON.stringify({ summary, timings: this.timings }, null, 2), 'utf-8'),
-      writeFile(reportPath, stub, 'utf-8'),
-    ]);
+    await finalizeReport(this.auditConfig.outputDir, {
+      bundleId: this.auditConfig.bundleId,
+      runner: this.auditConfig.runner,
+      deviceInfo: this.auditConfig.deviceId ?? '(booted simulator)',
+      model: this.auditConfig.model,
+      startedAt: this.startedAt,
+      endedAt: new Date(),
+      maxSteps: this.auditConfig.maxSteps,
+      partialReason,
+    });
 
     // Console summary (P50/P95/avg + cost)
     console.log(pc.cyan('\n⏱️  Performance summary:'));
