@@ -4,13 +4,31 @@ AI-powered mobile task automation. Natural language → screenshot → AI decisi
 
 ## Project Structure
 
-- `src/index.ts` — CLI entry point (commander)
+- `src/index.ts` — CLI entry point (commander), including the `audit` subcommand
 - `src/executor.ts` — Task execution loop (observe → decide → execute → repeat)
 - `src/agent.ts` — AI agent (vision model integration)
+- `src/audit-executor.ts` — Autonomous audit loop (extends TaskExecutor, Phase 1)
+- `src/audit-agent.ts` — Stateless audit agent (extends TaskAgent, Phase 1)
+- `src/audit-report.ts` — Markdown report renderer for audit output
+- `src/schemas/audit.ts` — Zod schema for `AuditDecision` (structured output)
+- `src/core/` — Audit support modules (fingerprint, rate limiter, annotation, timing, JSONL)
+- `src/errors/audit-errors.ts` — `AuditError` class + 9 discriminated error codes
 - `src/wda.ts` — WDAClient for physical iOS devices
 - `src/maestro.ts` — MaestroClient for simulators
 - `src/xctest.ts` — XCTest runner for iOS 26+ simulators
-- `src/types.ts` — Shared types (`RunnerType`, `TaskConfig`, etc.)
+- `src/types.ts` — Shared types (`RunnerType`, `TaskConfig`, `AuditConfig`, etc.)
+
+### When to use which command
+
+| Command | Input | Use when |
+|---------|-------|----------|
+| `phone-use run <bundleId> <task>` | a specific, goal-oriented task in natural language | you know exactly what you want the phone to do (send a message, fill a form, book a seat). Conversation-history-aware agent; best for ≤ 100-step tasks with a clear end condition. |
+| `phone-use audit <bundleId>` | **no task** — just a bundle id (and optionally `--scope`) | you want the agent to explore the app on its own and emit a Markdown UX audit with annotated screenshots. Stateless, Norman/Nielsen/HIG-grounded, produces `report.md` + `annotated/step-NN.jpg`. Phase 1: iOS 26 simulator only. |
+
+**Known limitations** (Phase 1):
+- `phone-use audit` is simulator-only (`--runner xctest` on iOS 26). Physical device audit is a Phase 2 feature because no iOS 26 physical-device driver currently exists; see `openspec/changes/add-mobile-ux-audit/design.md` Decision 20.
+- Audit mode assumes Gemini 2.5 Flash as the default vision model. Free-tier quota (both RPM and RPD) will throttle or block long runs — see `openspec/changes/add-mobile-ux-audit/handoff.md` §4 for the latest observed behaviour and recommended `--rpm-limit` / `--max-retries` settings.
+- Run mode (`phone-use run`) is unchanged by the audit work: `src/agent.ts` and `src/executor.ts` only received visibility bumps (`private → protected`) and a shared driver-build helper. No behavioural change. See `openspec/changes/add-mobile-ux-audit/handoff.md` §8.4.
 
 ## Build & Run
 

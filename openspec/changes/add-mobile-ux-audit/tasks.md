@@ -169,7 +169,7 @@
 
 ## 18. Documentation
 
-- [ ] 18.1 Update `CLAUDE.md` with a short "audit mode" section, the `when to use which` table comparing `run`, `audit`, and `phone-explore`, and a **Known limitations** paragraph noting iOS 26 physical device is Phase 2
+- [x] 18.1 Update `CLAUDE.md` with a short "audit mode" section, the `when to use which` table comparing `run`, `audit`, and `phone-explore`, and a **Known limitations** paragraph noting iOS 26 physical device is Phase 2
 - [x] 18.2 Add a README snippet showing a minimal `phone-use audit` invocation and the resulting report layout
 - [x] 18.3 Document the `--skip-launch` pre-auth workflow with a concrete LINE example
 - [x] 18.4 Create `docs/audit-errors.md` with troubleshooting for each `AuditErrorCode`
@@ -179,7 +179,7 @@
 
 - [x] 19.1 Add `.env.example` with `GOOGLE_GENERATIVE_AI_API_KEY=your-key-here` and commented `OPENAI_API_KEY=`; update README to point at it (OPS-5)
 - [ ] 19.2 Add `engines.node` in `package.json` to `>=18.0.0 <26` and run `npm test` + `npx tsc --noEmit` on Node 18 / 20 / 22 to verify `node:test` compatibility (OPS-6)
-- [ ] 19.3 Add `.github/workflows/test.yml` running `npx tsc --noEmit` and `npm test` on `macos-latest` across a Node 18 / 20 / 22 matrix (OPS-7)
+- [x] 19.3 Add `.github/workflows/test.yml` running `npx tsc --noEmit` and `npm test` on `macos-latest` across a Node 18 / 20 / 22 matrix (OPS-7)
 - [x] 19.4 Resolve `AuditConfig.outputDir` via `path.resolve(process.cwd(), ...)` and document "outputs land in the current working directory" in README (OPS-8)
 
 ## 20. Unit tests for rate limiter (from OPS-19)
