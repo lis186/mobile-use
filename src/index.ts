@@ -25,20 +25,51 @@ const DEFAULT_AUDIT_MAX_STEPS = 25;
 // Handle graceful shutdown
 let isShuttingDown = false;
 
+/**
+ * When an audit command is active, the audit action handler registers a
+ * cancel callback here. The global SIGINT handler below invokes it and
+ * then waits one short tick so the executor's current step can unwind
+ * and write a partial report before the process exits.
+ *
+ * Null when no audit is active (or before `runAuditCommand` has
+ * constructed its executor) — in that case SIGINT falls through to the
+ * original "exit 0 immediately" behaviour used by `run` and other
+ * commands.
+ */
+let auditCancelCallback: (() => void) | null = null;
+
 function setupSignalHandlers(): void {
-  const shutdown = (signal: string) => {
+  const shutdown = async (signal: string) => {
     if (isShuttingDown) {
       process.stderr.write('\n\nForce quitting...\n');
       process.exit(1);
     }
     isShuttingDown = true;
     process.stderr.write(`\n\n${signal} received. Shutting down gracefully...\n`);
+
+    // If an audit is running, tell it to cancel and let the main
+    // `await runAuditCommand(...)` unwind naturally. The audit command's
+    // own try/finally then runs `finalize()` and prints the partial
+    // report summary before the normal exit path runs.
+    if (auditCancelCallback) {
+      try {
+        auditCancelCallback();
+      } catch {
+        // best-effort — never block shutdown on a callback crash
+      }
+      // Do NOT process.exit() here: the audit action handler will call
+      // process.exit() itself once executeAudit() unwinds. The second
+      // Ctrl+C (handled by `isShuttingDown` above) still works as a
+      // force-quit if the user gets impatient.
+      return;
+    }
+
     process.exit(0);
   };
 
-  process.on('SIGINT', () => shutdown('SIGINT'));
-  process.on('SIGTERM', () => shutdown('SIGTERM'));
-  process.on('SIGHUP', () => shutdown('SIGHUP'));
+  process.on('SIGINT', () => void shutdown('SIGINT'));
+  process.on('SIGTERM', () => void shutdown('SIGTERM'));
+  process.on('SIGHUP', () => void shutdown('SIGHUP'));
 }
 
 setupSignalHandlers();
@@ -231,11 +262,15 @@ program
   .action(async (bundleIdArg: string, options: Record<string, unknown>) => {
     try {
       const config = buildAuditConfig(bundleIdArg, options);
-      await runAuditCommand(config);
+      await runAuditCommand(config, (executor) => {
+        auditCancelCallback = () => executor.cancel();
+      });
       process.exit(0);
     } catch (err) {
       formatAuditError(err);
       process.exit(1);
+    } finally {
+      auditCancelCallback = null;
     }
   });
 
@@ -338,11 +373,19 @@ function parseIntFlag(
  * Top-level audit runner. Builds an AuditExecutor and runs its loop.
  * Errors inside the executor are returned via AuditRunResult.partialReason
  * or thrown as AuditError; formatAuditError() renders either shape.
+ *
+ * `onExecutorReady` is invoked once the executor has been constructed so
+ * the audit action handler can wire it into the SIGINT cancel callback
+ * (see `auditCancelCallback` in `setupSignalHandlers`).
  */
-async function runAuditCommand(config: AuditConfig): Promise<void> {
+async function runAuditCommand(
+  config: AuditConfig,
+  onExecutorReady?: (executor: import('./audit-executor.js').AuditExecutor) => void,
+): Promise<void> {
   const { apiKey, provider } = getApiConfig(config.model);
   const { AuditExecutor } = await import('./audit-executor.js');
   const executor = new AuditExecutor(config, apiKey, provider);
+  onExecutorReady?.(executor);
   const result = await executor.executeAudit();
 
   console.log('\n' + '═'.repeat(50));
@@ -372,11 +415,14 @@ async function runAuditCommand(config: AuditConfig): Promise<void> {
 function formatAuditError(err: unknown): void {
   if (isAuditError(err)) {
     console.error(pc.red(`\n❌ Audit failed: ${err.code}`));
-    console.error(pc.dim(`   ${err.hint}\n`));
+    console.error(pc.dim(`   ${err.hint}`));
+    console.error(pc.dim(`   Troubleshooting: docs/audit-errors.md#${err.code.toLowerCase()}\n`));
     return;
   }
   if (err instanceof Error) {
-    console.error(pc.red(`\n❌ ${redactSecrets(err.message)}\n`));
+    console.error(pc.red(`\n❌ ${redactSecrets(err.message)}`));
+    console.error(pc.dim(`   Unknown error — stack above. If this looks like a bug, file an issue with the redacted message.\n`));
+    if (err.stack) console.error(pc.dim(redactSecrets(err.stack)));
     return;
   }
   console.error(pc.red(`\n❌ Unexpected error: ${redactSecrets(String(err))}\n`));

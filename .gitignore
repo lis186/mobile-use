@@ -53,3 +53,8 @@ test-flow.yaml
 
 # Third-party drivers
 drivers/
+
+# Audit output — screenshots may contain PII (account names, chat snippets,
+# location data). Reports stay out of version control by default; share
+# them manually on a per-run basis if needed.
+audit-output/

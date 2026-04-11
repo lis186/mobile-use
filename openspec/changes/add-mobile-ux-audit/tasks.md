@@ -121,9 +121,9 @@
 ## 14. CLI wiring (final integration)
 
 - [x] 14.1 Wire `AuditExecutor` + `AuditAgent` into the `audit` subcommand action handler from Group 8
-- [ ] 14.2 Convert signal handlers to async to call `finalizeReport()` before exit
-- [ ] 14.3 Add CLI-level `AuditError` formatter: print code + hint + doc link for `AuditError`, raw stack for unknown errors
-- [ ] 14.4 Exit with code 0 on successful audit completion (even if issues were found) and code 1 only on hard failure
+- [x] 14.2 Convert signal handlers to async to call `finalizeReport()` before exit
+- [x] 14.3 Add CLI-level `AuditError` formatter: print code + hint + doc link for `AuditError`, raw stack for unknown errors
+- [x] 14.4 Exit with code 0 on successful audit completion (even if issues were found) and code 1 only on hard failure
 
 ## 14A. Live viewer (opt-in)
 
@@ -173,11 +173,11 @@
 - [ ] 18.2 Add a README snippet showing a minimal `phone-use audit` invocation and the resulting report layout
 - [ ] 18.3 Document the `--skip-launch` pre-auth workflow with a concrete LINE example
 - [ ] 18.4 Create `docs/audit-errors.md` with troubleshooting for each `AuditErrorCode`
-- [ ] 18.5 Add `audit-output/` to `.gitignore` with a comment about PII in screenshots
+- [x] 18.5 Add `audit-output/` to `.gitignore` with a comment about PII in screenshots
 
 ## 19. Operational readiness (from OPS pre-mortem)
 
-- [ ] 19.1 Add `.env.example` with `GOOGLE_GENERATIVE_AI_API_KEY=your-key-here` and commented `OPENAI_API_KEY=`; update README to point at it (OPS-5)
+- [x] 19.1 Add `.env.example` with `GOOGLE_GENERATIVE_AI_API_KEY=your-key-here` and commented `OPENAI_API_KEY=`; update README to point at it (OPS-5)
 - [ ] 19.2 Add `engines.node` in `package.json` to `>=18.0.0 <26` and run `npm test` + `npx tsc --noEmit` on Node 18 / 20 / 22 to verify `node:test` compatibility (OPS-6)
 - [ ] 19.3 Add `.github/workflows/test.yml` running `npx tsc --noEmit` and `npm test` on `macos-latest` across a Node 18 / 20 / 22 matrix (OPS-7)
 - [ ] 19.4 Resolve `AuditConfig.outputDir` via `path.resolve(process.cwd(), ...)` and document "outputs land in the current working directory" in README (OPS-8)

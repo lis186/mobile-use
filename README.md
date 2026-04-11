@@ -74,8 +74,11 @@ phone-use supports multiple vision-capable models (Gemini, GPT, etc.) that can a
 # Install by Cloning
 git clone https://github.com/lis186/phone-use
 
-# Set your OpenAI API key
-export OPENAI_API_KEY=your_api_key_here
+# Configure API keys — copy .env.example to .env and fill in at least one.
+# For `phone-use audit` the default is Gemini (GOOGLE_GENERATIVE_AI_API_KEY).
+# `phone-use run` also accepts OPENAI_API_KEY when you pass a `gpt-*`/`o*` model.
+cp .env.example .env
+$EDITOR .env
 
 # Install, Build, and link
 npm i

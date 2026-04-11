@@ -82,6 +82,7 @@ export class AuditExecutor extends TaskExecutor {
   private onboardingSteps = 0;
   private crashStreak = 0;
   private startedAt: Date = new Date();
+  private cancelRequested = false;
 
   constructor(config: AuditConfig, apiKey: string, provider: 'google' | 'openai' = 'google') {
     // Build a stub TaskConfig for the parent's driver setup. The parent will
@@ -107,6 +108,18 @@ export class AuditExecutor extends TaskExecutor {
     // it with one pinned to the audit config so the right runner branch is
     // used (defensive — parent's selection should be identical for Phase 1).
     this.maestro = buildDriverFromTaskConfig(taskStub);
+  }
+
+  /**
+   * Request a graceful cancel from outside the loop (e.g. SIGINT handler in
+   * `src/index.ts`). The loop finishes its current step, then throws
+   * `E_USER_ABORTED` so the outer `try/finally` still runs `finalize()` and
+   * a partial report is written. Idempotent — subsequent calls no-op.
+   */
+  cancel(): void {
+    if (this.cancelRequested) return;
+    this.cancelRequested = true;
+    console.log(pc.yellow('\n⏸  Cancel requested — finishing current step, then writing a partial report...'));
   }
 
   /**
@@ -190,7 +203,7 @@ export class AuditExecutor extends TaskExecutor {
 
   private async runLoop(): Promise<void> {
     let step = 0;
-    while (step < this.auditConfig.maxSteps) {
+    while (step < this.auditConfig.maxSteps && !this.cancelRequested) {
       step++;
       console.log(pc.dim(`\n${'─'.repeat(40)}`));
       console.log(pc.bold(`Step ${step}/${this.auditConfig.maxSteps}`));
@@ -368,6 +381,13 @@ export class AuditExecutor extends TaskExecutor {
         sleep_ms: Math.round(t5 - t4),
         total_ms: Math.round(t5 - t0),
       });
+    }
+
+    if (this.cancelRequested) {
+      throw new AuditError(
+        'E_USER_ABORTED',
+        'Audit was cancelled by the user (SIGINT) before completion. A partial report has been written.',
+      );
     }
 
     console.log(pc.yellow(`\n⏱️  Max steps (${this.auditConfig.maxSteps}) reached`));
