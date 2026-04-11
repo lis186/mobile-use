@@ -46,6 +46,8 @@ export interface AuditAgentContext {
 export interface AuditStepResult {
   /** The navigation action in run-mode shape (so the existing executeAction switch works). */
   navigation: AgentDecision;
+  /** Human-readable screen name — always present, independent of whether issues were found. */
+  screenName: string;
   /** The raw structured audit block (may be undefined on a clean screen). */
   audit?: AuditDecision['audit'];
   reasoning: string;
@@ -216,13 +218,13 @@ export class AuditAgent extends TaskAgent {
     // Filter out low-confidence issues per Decision 17
     const auditBlock = obj.audit
       ? {
-          screenName: obj.audit.screenName,
           issues: obj.audit.issues.filter((i) => i.confidence >= CONFIDENCE_THRESHOLD),
         }
       : undefined;
 
     return {
       navigation: agentDecision,
+      screenName: obj.screenName,
       audit: auditBlock,
       reasoning: obj.reasoning,
       progress: obj.progress,
@@ -275,6 +277,7 @@ export class AuditAgent extends TaskAgent {
 
     return {
       navigation: agentDecision,
+      screenName: '(fallback)',
       audit: undefined,  // no audit analysis in fallback mode
       reasoning: `[FALLBACK] ${reasoning} (target: ${target})`,
       progress: 0,
@@ -404,6 +407,12 @@ If you see an iOS permission dialog (camera, location, notifications, Face ID), 
 
 == ONBOARDING ==
 If you see a tutorial, walkthrough, welcome screen, or "What's New" dialog, tap Skip / Got it / Continue to dismiss it. Set onboardingDetected=true so it's excluded from coverage.
+
+== EXPLORATION ANTI-PATTERNS (avoid these traps) ==
+- Do NOT pursue account creation, sign-in, login, or identity-verification flows (Apple Account, email verification, 2FA, password reset) unless they are the explicit audit scope. These flows terminate at walls the agent cannot cross without real credentials, wasting the remaining step budget.
+- If you see a login/sign-in gate on the first screen (e.g. "Sign in", "Create account", "Don't have an account?"), back out with the back action and pick a different top-level entry point that does not require authentication.
+- Do NOT open external URLs, App Store sheets, or payment/subscription flows — they either leave the app or need real billing data.
+- Prefer unvisited top-level navigation (tab bar, sidebar, primary menu items) over drilling deeper into a path you already explored.
 
 == ACTION PREFERENCE ==
 1. tapText with EXACT visible text — BEST option when element has readable text

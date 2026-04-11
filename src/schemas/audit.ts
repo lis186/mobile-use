@@ -42,9 +42,6 @@ export const auditIssueSchema = z.object({
 });
 
 export const auditBlockSchema = z.object({
-  screenName: z
-    .string()
-    .describe('descriptive name for the current screen, e.g. "Chat list" or "Settings > Notifications"'),
   issues: z
     .array(auditIssueSchema)
     .describe('only real UX issues with concrete evidence; empty array if none'),
@@ -128,6 +125,10 @@ export const navigationSchema = z.object({
 
 export const auditDecisionSchema = z.object({
   navigation: navigationSchema,
+  screenName: z
+    .string()
+    .min(1)
+    .describe('ALWAYS required. Descriptive name for the current screen, e.g. "Chat list" or "Settings > Notifications". Provide on every step regardless of whether issues are present.'),
   audit: auditBlockSchema
     .optional()
     .describe('ONLY include when real UX issues are present on this screen; omit entirely otherwise'),

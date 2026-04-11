@@ -256,7 +256,7 @@ export class AuditExecutor extends TaskExecutor {
         screenshotBase64: screenshotB64,
         grade: result.parsedTree?.grade ?? 'empty',
       });
-      const screenName = result.audit?.screenName ?? `Screen@${fingerprint}`;
+      const screenName = result.screenName?.trim() || `Screen@${fingerprint}`;
       this.updateVisited(fingerprint, screenName, step);
 
       if (result.parsedTree && result.parsedTree.grade === 'rich') {
