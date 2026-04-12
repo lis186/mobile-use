@@ -8,9 +8,9 @@
 ## TL;DR
 
 - **Branch**: `feature/mobile-ux-audit` (lives in `/Users/justinlee/dev/phone-use`)
-- **Progress**: **93 / 111 tasks done** (~84 %). Foundation + AuditAgent + AuditExecutor + Report renderer + 107 unit tests + BUG-B/OBSERVATION-C fixes + Path B batch (SIGINT cancel, error docs, CI workflow, README audit section) all committed.
+- **Progress**: **103 / 111 tasks done** (~93 %). Everything through Group 17 dogfood (0% FP across three apps) is committed. Only 14A live viewer (6), 16.2 run-mode e2e (1), and 19.2 cross-Node verify (1) remain.
 - **Status**: Path B landed on 2026-04-12 across three commits. `tsc --noEmit` clean, `npm test` → 107/107 green, `npm run build` produces `dist/` cleanly. The only tasks still blocked are those that need a live AI call: Group 16.2 (run-mode e2e), Group 17.1–17.10 (full dogfood) — both gated on the Gemini 2.5 Flash daily quota resetting at UTC midnight, or on a paid-tier upgrade.
-- **Last commit**: `9d7c194 docs(audit)+ci: Path B — Groups 18.1, 19.3`
+- **Last commit**: `c922de7 feat(audit): Group 17 dogfood passed — 0% FP across Settings/Maps/Safari`
 - **Working tree**: clean (ignore local `audit-output/` dir if present)
 - **Next obvious step**: wait for UTC midnight (~ 5 hours from 2026-04-12 19:20 UTC at time of writing) and then run Group 17.1 dogfood with `--rpm-limit 5 --max-retries 0` on a clean output directory. Everything else Phase 1 needs is already committed.
 
