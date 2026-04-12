@@ -7,7 +7,7 @@
  */
 
 import { createServer, type Server, type IncomingMessage, type ServerResponse } from 'node:http';
-import sharp from 'sharp';
+import { optimizeScreenshot } from './image-utils.js';
 
 export interface StepData {
   step: number;
@@ -61,11 +61,8 @@ export class LiveViewer {
   }
 
   async pushStep(data: StepData): Promise<void> {
-    // Compress screenshot to JPEG
     const raw = Buffer.from(data.screenshotBase64, 'base64');
-    const metadata = await sharp(raw).metadata();
-    const targetWidth = Math.round((metadata.width ?? 800) / 2);
-    const jpeg = await sharp(raw).resize(targetWidth).jpeg({ quality: 80 }).toBuffer();
+    const jpeg = await optimizeScreenshot(raw);
 
     this.steps.set(data.step, jpeg);
 

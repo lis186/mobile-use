@@ -6,20 +6,22 @@
  * files back at the end to render the Markdown report.
  */
 
-import { appendFile, mkdir, readFile } from 'node:fs/promises';
+import { appendFile, readFile } from 'node:fs/promises';
 import * as path from 'node:path';
 import type { AuditIssue, StepRecord } from '../types.js';
 
-/** Append a single step record to steps.jsonl in the output directory. */
+/**
+ * Append a single step record to steps.jsonl in the output directory.
+ * Callers must ensure the output directory exists before the first call
+ * (AuditExecutor.initOutputDir handles this).
+ */
 export async function appendStep(outputDir: string, record: StepRecord): Promise<void> {
-  await ensureDir(outputDir);
   const line = JSON.stringify(record) + '\n';
   await appendFile(path.join(outputDir, 'steps.jsonl'), line, 'utf-8');
 }
 
 /** Append a single issue record to issues.jsonl in the output directory. */
 export async function appendIssue(outputDir: string, issue: AuditIssue): Promise<void> {
-  await ensureDir(outputDir);
   const line = JSON.stringify(issue) + '\n';
   await appendFile(path.join(outputDir, 'issues.jsonl'), line, 'utf-8');
 }
@@ -46,8 +48,4 @@ export async function readJsonl<T>(filePath: string): Promise<T[]> {
     }
   }
   return out;
-}
-
-async function ensureDir(dir: string): Promise<void> {
-  await mkdir(dir, { recursive: true });
 }

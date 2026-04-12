@@ -55,7 +55,7 @@ export async function writeAnnotated(
 ): Promise<string> {
   const dir = path.join(outputDir, 'annotated');
   await mkdir(dir, { recursive: true });
-  const name = `step-${String(stepNumber).padStart(2, '0')}.jpg`;
+  const name = stepFileName(stepNumber);
   await writeFile(path.join(dir, name), annotatedBuffer);
   return `annotated/${name}`;
 }
@@ -195,7 +195,8 @@ function buildTextCard(
   return { svg, x, y, w: cardW, h: cardH };
 }
 
-function firstParamText(decision: AgentDecision): string | null {
+/** Extract the first meaningful param (text → appId → url) from a decision. */
+export function firstParamText(decision: AgentDecision): string | null {
   const p = decision.params;
   if (!p) return null;
   if (p.text) return p.text;
@@ -216,4 +217,9 @@ function escapeXml(s: string): string {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&apos;');
+}
+
+/** Canonical step-screenshot filename so the writer and the report renderer stay in sync. */
+export function stepFileName(n: number): string {
+  return `step-${String(n).padStart(2, '0')}.jpg`;
 }

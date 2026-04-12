@@ -10,11 +10,11 @@
  * unit-testable without touching the filesystem.
  */
 
-import { writeFile } from 'node:fs/promises';
-import { readFile } from 'node:fs/promises';
+import { writeFile, readFile } from 'node:fs/promises';
 import * as path from 'node:path';
 import { readJsonl } from './core/jsonl-writer.js';
 import { summarize, type TimingSummary } from './core/step-timing.js';
+import { stepFileName } from './core/annotate.js';
 import type { StepRecord, AuditIssue, StepTiming } from './types.js';
 
 // ── Public types ─────────────────────────────────────────────
@@ -153,7 +153,7 @@ function renderIssues(data: AuditReportData): string {
 
 function renderIssueSection(issue: AuditIssue, ctx: AuditReportContext): string {
   const severityIcon = severityEmoji(issue.severity);
-  const annotatedPath = `annotated/step-${String(issue.stepNumber).padStart(2, '0')}.jpg`;
+  const annotatedPath = `annotated/${stepFileName(issue.stepNumber)}`;
   const personaLine = issue.persona ? `\n**Affected Persona**: ${escapeMd(issue.persona)}` : '';
   const reauditCmd = buildReauditCommand(ctx.bundleId, issue.screenName);
 

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, writeFile, rm } from 'node:fs/promises';
+import { mkdtemp, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import { appendStep, appendIssue, readJsonl } from '../src/core/jsonl-writer.ts';
@@ -120,13 +120,6 @@ test('readJsonl: drops malformed lines but keeps valid ones', async (t) => {
   assert.equal(read[2]?.step, 3);
 });
 
-test('appendStep: creates parent directory if it does not exist', async (t) => {
-  const parent = await mkdtemp(path.join(tmpdir(), 'jsonl-test-'));
-  t.after(() => rm(parent, { recursive: true, force: true }));
-
-  const nested = path.join(parent, 'does/not/exist/yet');
-  await appendStep(nested, makeStep(1));
-
-  const content = await readFile(path.join(nested, 'steps.jsonl'), 'utf-8');
-  assert.ok(content.includes('"step":1'));
-});
+// Removed: "creates parent directory if it does not exist" test.
+// ensureDir was removed from append functions — callers (AuditExecutor.initOutputDir)
+// must create the output directory before the first append.

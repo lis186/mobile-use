@@ -13,7 +13,7 @@
  */
 
 import { generateObject, generateText, NoObjectGeneratedError } from 'ai';
-import sharp from 'sharp';
+import { optimizeScreenshot } from './core/image-utils.js';
 import { TaskAgent } from './agent.js';
 import { auditDecisionSchema, type AuditDecision } from './schemas/audit.js';
 import { AuditError } from './errors/audit-errors.js';
@@ -297,7 +297,7 @@ export class AuditAgent extends TaskAgent {
     ctx: AuditAgentContext,
     parsed: ParsedTree | null,
   ): Promise<UserContentPart[]> {
-    const imageBuffer = await optimizeImage(ctx.screenshotBuffer);
+    const imageBuffer = await optimizeScreenshot(ctx.screenshotBuffer);
 
     const treeBlock = buildTreeBlock(parsed);
     const stateBlock = this.buildExplorationStateBlock(ctx, parsed?.grade ?? 'empty');
@@ -448,16 +448,7 @@ function buildTreeBlock(parsed: ParsedTree | null): string {
   return `${header}\n\nUI ELEMENTS ON SCREEN:\n${parsed.text}`;
 }
 
-/**
- * Optimize the incoming PNG screenshot for the vision model.
- * Same strategy as the run-mode TaskAgent (half size, JPEG 80).
- */
-async function optimizeImage(buffer: Buffer): Promise<Buffer> {
-  const metadata = await sharp(buffer).metadata();
-  const origW = metadata.width ?? 0;
-  const targetWidth = Math.max(1, Math.round(origW / 2));
-  return sharp(buffer).resize(targetWidth).jpeg({ quality: 80 }).toBuffer();
-}
+// optimizeScreenshot was here — now uses shared optimizeScreenshot from core/image-utils.ts
 
 /** Safe JSON.parse for the fallback path — returns null on error. */
 function safeJsonParse(text: string): unknown {

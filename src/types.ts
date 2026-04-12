@@ -159,24 +159,3 @@ export interface StepRecord {
   timing: StepTiming;
 }
 
-/** The final audit report structure passed to the renderer */
-export interface AuditReport {
-  bundleId: string;
-  runner: RunnerType;
-  device: string;
-  iosVersion?: string;
-  model: string;
-  startedAt: string;        // ISO timestamp
-  durationMs: number;
-  stepsTotal: number;
-  stepsOnboarding: number;
-  uniqueScreens: number;
-  issues: AuditIssue[];
-  visited: VisitedScreen[];
-  timings: StepTiming[];
-  estimatedCost: number;
-  totalInputTokens: number;
-  totalOutputTokens: number;
-  partial: boolean;         // true if run ended early
-  partialReason?: string;   // AuditError code if partial
-}

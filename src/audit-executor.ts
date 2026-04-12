@@ -32,7 +32,7 @@ import { fingerprintScreen } from './core/screen-fingerprint.js';
 import { extractNavTargets } from './core/tree-parser.js';
 import { appendStep, appendIssue } from './core/jsonl-writer.js';
 import { saveEvidence } from './core/evidence.js';
-import { annotateScreenshot, writeAnnotated } from './core/annotate.js';
+import { annotateScreenshot, writeAnnotated, firstParamText } from './core/annotate.js';
 import { summarize } from './core/step-timing.js';
 import { finalizeReport } from './audit-report.js';
 import type { LiveViewer } from './core/live-viewer.js';
@@ -43,7 +43,6 @@ import type {
   VisitedScreen,
   AuditIssue,
   StepRecord,
-  AgentDecision,
 } from './types.js';
 
 const NAVIGATION_ACTIONS = new Set<string>([
@@ -347,7 +346,7 @@ export class AuditExecutor extends TaskExecutor {
           stepNumber: step,
           totalSteps: this.auditConfig.maxSteps,
           model: this.auditConfig.model,
-          target: extractTargetFromDecision(result.navigation),
+          target: firstParamText(result.navigation) ?? undefined,
           screenName,
         });
         await writeAnnotated(this.auditConfig.outputDir, step, annotated);
@@ -726,12 +725,4 @@ function isProcessAlive(pid: number): boolean {
   }
 }
 
-function extractTargetFromDecision(decision: AgentDecision): string | undefined {
-  const p = decision.params;
-  if (!p) return undefined;
-  if (p.text) return p.text;
-  if (p.appId) return p.appId;
-  if (p.url) return p.url;
-  return undefined;
-}
 
