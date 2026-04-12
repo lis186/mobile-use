@@ -100,6 +100,8 @@ program
   .option('--language <lang>', 'Device UI language (e.g., "Traditional Chinese (繁體中文)")')
   .option('--criteria <criteria...>', 'Success criteria (can specify multiple)')
   .option('--constraint <constraints...>', 'Constraints (can specify multiple)')
+  .option('--live', 'Open live viewer in browser to watch execution')
+  .option('--live-port <port>', 'Live viewer port (default: 7330)')
   .action(async (bundleIdArg?: string, taskArg?: string, options?: Record<string, unknown>) => {
     const runner = (options?.runner as RunnerType) ?? 'maestro';
 
@@ -183,6 +185,8 @@ program
       successCriteria: options?.criteria as string[] | undefined,
       constraints: options?.constraint as string[] | undefined,
       runner,
+      live: !!options?.live,
+      livePort: options?.livePort ? parseInt(String(options.livePort), 10) : undefined,
       iosDevice: runner === 'xctest'
         ? { udid: deviceId ?? iosDeviceUdid ?? 'booted', appFile: xctestrunPath, driverPort }
         : iosDeviceUdid
@@ -333,6 +337,8 @@ program
   .option('--language <lang>', 'Device UI language (e.g., "Traditional Chinese (繁體中文)")')
   .option('--criteria <criteria...>', 'Success criteria')
   .option('--constraint <constraints...>', 'Constraints')
+  .option('--live', 'Open live viewer in browser to watch execution')
+  .option('--live-port <port>', 'Live viewer port (default: 7330)')
   .action(async (bundleIdArg?: string, taskArg?: string, options?: Record<string, unknown>) => {
     const taskFromOption = options?.task as string | undefined;
     let bundleId: string | undefined;
@@ -402,6 +408,8 @@ program
       successCriteria: options?.criteria as string[] | undefined,
       constraints: options?.constraint as string[] | undefined,
       runner,
+      live: !!options?.live,
+      livePort: options?.livePort ? parseInt(String(options.livePort), 10) : undefined,
       iosDevice: runner === 'xctest'
         ? { udid: deviceId2 ?? iosDeviceUdid ?? 'booted', appFile: xctestrunPath2, driverPort }
         : iosDeviceUdid
