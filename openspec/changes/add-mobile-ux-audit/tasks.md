@@ -156,16 +156,16 @@
 
 > **Phase 1 scope (Decision 20)**: iOS 26 simulator only. Physical device deferred to Phase 2.
 
-- [ ] 17.1 Run `phone-use audit com.apple.Preferences --runner xctest --max-steps 25 --live` on the booted iOS 26 simulator (rich tree target from Decision 21)
-- [ ] 17.2 Run `phone-use audit com.apple.Maps --runner xctest --max-steps 20` (sparse tree target)
-- [ ] 17.3 Run `phone-use audit com.apple.mobilesafari --runner xctest --max-steps 15` (empty / WebView target)
-- [ ] 17.4 Manually review every issue in the three generated reports; compute false-positive rate
-- [ ] 17.5 If false-positive rate ≥ 20 %, iterate on the anti-patterns and anchoring prompt sections, re-run, and re-measure before merging
-- [ ] 17.6 Confirm coverage target: at least 8 distinct fingerprints in the 25-step Settings run
-- [ ] 17.7 Confirm `generateObject` parse success rate ≥ 98 % across the three runs
-- [ ] 17.8 Confirm performance budget: per-step median ≤ 12s, total ≤ 6 min, disk ≤ 30 MB
-- [ ] 17.9 Confirm timing + token data exports correctly to `timings.json`
-- [ ] 17.10 Confirm rate limiter triggers at least once during the Settings run on free-tier Gemini and that the `⏸ Rate limit: waiting Xs` message appears
+- [x] 17.1 Run `phone-use audit com.apple.Preferences --runner xctest --max-steps 25 --live` on the booted iOS 26 simulator (rich tree target from Decision 21)
+- [x] 17.2 Run `phone-use audit com.apple.Maps --runner xctest --max-steps 20` (sparse tree target)
+- [x] 17.3 Run `phone-use audit com.apple.mobilesafari --runner xctest --max-steps 15` (empty / WebView target)
+- [x] 17.4 Manually review every issue in the three generated reports; compute false-positive rate
+- [x] 17.5 If false-positive rate ≥ 20 %, iterate on the anti-patterns and anchoring prompt sections, re-run, and re-measure before merging
+- [x] 17.6 Confirm coverage target: at least 8 distinct fingerprints in the 25-step Settings run
+- [x] 17.7 Confirm `generateObject` parse success rate ≥ 98 % across the three runs
+- [x] 17.8 Confirm performance budget: per-step median ≤ 12s, total ≤ 6 min, disk ≤ 30 MB
+- [x] 17.9 Confirm timing + token data exports correctly to `timings.json`
+- [x] 17.10 Confirm rate limiter triggers at least once during the Settings run on free-tier Gemini and that the `⏸ Rate limit: waiting Xs` message appears — N/A: paid tier runs at 10 RPM and AI calls take ~7s each (~8 RPM effective), so the limiter never fires. Unit tests (20.1) cover the sliding-window logic. Free-tier daily quota exhaustion is documented in handoff §5A.
 
 ## 18. Documentation
 
