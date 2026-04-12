@@ -51,11 +51,20 @@ export async function finalizeReport(
   outputDir: string,
   ctx: AuditReportContext,
 ): Promise<void> {
-  const [steps, issues, timings] = await Promise.all([
+  const [steps, rawIssues, timings] = await Promise.all([
     readJsonl<StepRecord>(path.join(outputDir, 'steps.jsonl')),
     readJsonl<AuditIssue>(path.join(outputDir, 'issues.jsonl')),
     readTimingsJsonSafe(path.join(outputDir, 'timings.json')),
   ]);
+
+  // Dedup: same screen + same title = same issue; keep the first occurrence.
+  const seen = new Set<string>();
+  const issues = rawIssues.filter((issue) => {
+    const key = `${issue.screenName}\0${issue.title}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 
   const summary = summarize(timings, ctx.model);
   const md = renderReport({ ctx, steps, issues, timings, summary });

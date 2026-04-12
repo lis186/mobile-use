@@ -379,6 +379,8 @@ Layer 3 — ANTI-PATTERNS — NEVER report these:
 - Normal modal sheets as "intrusive"
 - Standard button styles as "lacking affordance" (iOS buttons are blue; that IS the affordance)
 - Information density that's appropriate for the app's domain
+- iOS search bar / Spotlight field co-existing with a search button — this is the standard Settings pattern, not a "redundant search" issue
+- Duplicate of an issue you already reported on an earlier step for the same screen element — if you already flagged it, do not flag it again even if you revisit the screen
 
 == GOOD vs BAD issue examples ==
 
