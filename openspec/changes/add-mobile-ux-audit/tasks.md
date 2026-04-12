@@ -149,7 +149,7 @@
 ## 16. Run-mode regression safety
 
 - [x] 16.1 Verify `src/agent.ts` and `src/executor.ts` are unchanged where they serve the `run` command
-- [ ] 16.2 Run an end-to-end `phone-use run` flow on a simulator and confirm identical behavior to the previous release
+- [x] 16.2 Run an end-to-end `phone-use run` flow on a simulator and confirm identical behavior to the previous release
 - [x] 16.3 Run `npx tsc --noEmit` on the full project and fix any type errors introduced by the new files
 
 ## 17. Quality gate and dogfood
