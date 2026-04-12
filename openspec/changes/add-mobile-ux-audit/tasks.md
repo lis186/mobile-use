@@ -178,7 +178,7 @@
 ## 19. Operational readiness (from OPS pre-mortem)
 
 - [x] 19.1 Add `.env.example` with `GOOGLE_GENERATIVE_AI_API_KEY=your-key-here` and commented `OPENAI_API_KEY=`; update README to point at it (OPS-5)
-- [ ] 19.2 Add `engines.node` in `package.json` to `>=18.0.0 <26` and run `npm test` + `npx tsc --noEmit` on Node 18 / 20 / 22 to verify `node:test` compatibility (OPS-6)
+- [x] 19.2 Add `engines.node` in `package.json` to `>=18.0.0 <26` and run `npm test` + `npx tsc --noEmit` on Node 18 / 20 / 22 to verify `node:test` compatibility (OPS-6)
 - [x] 19.3 Add `.github/workflows/test.yml` running `npx tsc --noEmit` and `npm test` on `macos-latest` across a Node 18 / 20 / 22 matrix (OPS-7)
 - [x] 19.4 Resolve `AuditConfig.outputDir` via `path.resolve(process.cwd(), ...)` and document "outputs land in the current working directory" in README (OPS-8)
 
