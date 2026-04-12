@@ -249,7 +249,7 @@ export class AuditExecutor extends TaskExecutor {
       const t1 = performance.now();
 
       // ── App-crash detection ─────────────────────────────────
-      if (await this.detectAppCrash()) {
+      if (this.detectAppCrash(tree)) {
         this.crashStreak++;
         if (this.crashStreak >= 2) {
           throw new AuditError(
@@ -413,6 +413,15 @@ export class AuditExecutor extends TaskExecutor {
         sleep_ms: Math.round(t5 - t4),
         total_ms: Math.round(t5 - t0),
       });
+
+      // ── Token budget enforcement ────────────────────────────
+      const totalInput = this.timings.reduce((sum, t) => sum + t.input_tokens, 0);
+      if (totalInput > this.auditConfig.tokenBudget) {
+        throw new AuditError(
+          'E_BUDGET_EXCEEDED',
+          `Total input tokens (${totalInput.toLocaleString()}) exceeded --token-budget (${this.auditConfig.tokenBudget.toLocaleString()}) after step ${step}. Partial report has been written.`,
+        );
+      }
     }
 
     if (this.cancelRequested) {
@@ -478,16 +487,20 @@ export class AuditExecutor extends TaskExecutor {
   }
 
   /**
-   * Best-effort app-crash detection. We consider the app "crashed" when
-   * two consecutive screenshots hash to the same 'home-screen-like' fingerprint.
-   * For Phase 1 we keep this conservative — a heuristic is enough to avoid
-   * infinite audit runs on a dead app.
+   * Best-effort app-crash detection. XCTest's viewHierarchy is filtered by
+   * the target bundleId. When the app isn't in the foreground (crashed,
+   * bounced to SpringBoard, or left via external link), the response contains
+   * no Application element — the tree comes back empty or undefined.
+   *
+   * We require 2 consecutive empty trees before declaring a crash to avoid
+   * false positives from transient blank-screen transitions (e.g. app launch
+   * splash, system dialog overlay that briefly hides the app).
    */
-  private async detectAppCrash(): Promise<boolean> {
-    // No cheap cross-runner way to inspect foreground state, so return false
-    // for now. The crashStreak hook in runLoop is wired so a smarter check
-    // can slot in later without touching the loop structure.
-    return false;
+  private detectAppCrash(tree: string | undefined): boolean {
+    // A legitimate in-foreground tree has at minimum 10+ chars of AX data
+    // (Application root, at least one child). Empty / undefined = target app
+    // likely not in foreground.
+    return !tree || tree.trim().length < 10;
   }
 
   // ── Visited map + nav target tracking ────────────────────────
@@ -647,27 +660,33 @@ export class AuditExecutor extends TaskExecutor {
       .replace(/[^a-zA-Z0-9-]/g, '_');
     this.lockPath = path.join(LOCK_DIR, `phone-use-audit-${key}.lock`);
 
-    // Read-before-write without a TOCTOU existsSync gate: missing file throws
-    // ENOENT, which we treat as "no lock held".
+    // Atomic lock: O_CREAT|O_EXCL ('wx') fails with EEXIST if another
+    // process already created the file — no read-then-write race window.
     try {
-      const pidStr = readFileSync(this.lockPath, 'utf-8').trim();
-      const pid = parseInt(pidStr, 10);
-      if (Number.isInteger(pid) && isProcessAlive(pid)) {
-        throw new AuditError(
-          'E_CONCURRENT_RUN',
-          `Another phone-use audit (pid ${pid}) is already running on this device. Wait for it to finish or kill the other process.`,
-        );
-      }
-      // Stale lockfile — fall through and claim it.
+      writeFileSync(this.lockPath, String(process.pid), { flag: 'wx' });
     } catch (err) {
-      if (isAuditError(err)) throw err;
-      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
-        // Unreadable lockfile for reasons other than "doesn't exist" —
-        // best-effort: continue and try to overwrite.
+      if ((err as NodeJS.ErrnoException).code === 'EEXIST') {
+        // Lock file exists — check if the holder is still alive.
+        try {
+          const pidStr = readFileSync(this.lockPath, 'utf-8').trim();
+          const pid = parseInt(pidStr, 10);
+          if (Number.isInteger(pid) && isProcessAlive(pid)) {
+            throw new AuditError(
+              'E_CONCURRENT_RUN',
+              `Another phone-use audit (pid ${pid}) is already running on this device. Wait for it to finish or kill the other process.`,
+            );
+          }
+        } catch (readErr) {
+          if (isAuditError(readErr)) throw readErr;
+          // Unreadable / disappeared between check — fall through to reclaim.
+        }
+        // Stale lock from a dead process — overwrite it.
+        writeFileSync(this.lockPath, String(process.pid), 'utf-8');
+      } else {
+        // Some other I/O error (permissions, disk full) — best-effort continue.
       }
     }
 
-    writeFileSync(this.lockPath, String(process.pid), 'utf-8');
     this.exitHandler = () => {
       this.unlinkLockSilently();
     };

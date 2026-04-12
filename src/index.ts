@@ -295,10 +295,10 @@ function buildAuditConfig(bundleId: string, options: Record<string, unknown>): A
     );
   }
   const runner = (options.runner as RunnerType) ?? 'xctest';
-  if (runner === 'wda' || runner === 'maestro-runner') {
+  if (runner !== 'xctest') {
     throw new AuditError(
       'E_DRIVER_NOT_READY',
-      `Runner "${runner}" is a Phase 2 feature. Phase 1 targets iOS 26 simulator via --runner xctest.`,
+      `Runner "${runner}" is not supported in Phase 1. Audit mode targets iOS 26 simulator via --runner xctest only.`,
     );
   }
 
