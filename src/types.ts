@@ -15,6 +15,8 @@ export interface TaskConfig {
   deviceId?: string;
   iosDevice?: IosDeviceConfig;
   runner?: RunnerType;
+  live?: boolean;
+  livePort?: number;
 }
 
 export interface IosDeviceConfig {

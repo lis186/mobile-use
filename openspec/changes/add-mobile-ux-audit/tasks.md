@@ -127,12 +127,12 @@
 
 ## 14A. Live viewer (opt-in)
 
-- [ ] 14A.1 Create `src/core/live-viewer.ts` that starts a local HTTP server on `--live-port` (default 7330)
-- [ ] 14A.2 Serve a single-file HTML page with main panel + thumbnail strip layout
-- [ ] 14A.3 Implement SSE endpoint that pushes each annotated screenshot as it is written
-- [ ] 14A.4 Auto-open the viewer URL in the default browser via `open` on macOS when `--live` is passed
-- [ ] 14A.5 Gracefully shut down the server on audit completion, error, or SIGINT
-- [ ] 14A.6 Wire `--live` / `--live-port` flags through `AuditConfig`; if `--live` is absent, skip server startup entirely (zero overhead)
+- [x] 14A.1 Create `src/core/live-viewer.ts` that starts a local HTTP server on `--live-port` (default 7330)
+- [x] 14A.2 Serve a single-file HTML page with main panel + thumbnail strip layout
+- [x] 14A.3 Implement SSE endpoint that pushes each annotated screenshot as it is written
+- [x] 14A.4 Auto-open the viewer URL in the default browser via `open` on macOS when `--live` is passed
+- [x] 14A.5 Gracefully shut down the server on audit completion, error, or SIGINT
+- [x] 14A.6 Wire `--live` / `--live-port` flags through `AuditConfig`; if `--live` is absent, skip server startup entirely (zero overhead)
 
 ## 15. Unit tests
 

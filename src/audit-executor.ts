@@ -35,6 +35,7 @@ import { saveEvidence } from './core/evidence.js';
 import { annotateScreenshot, writeAnnotated } from './core/annotate.js';
 import { summarize } from './core/step-timing.js';
 import { finalizeReport } from './audit-report.js';
+import type { LiveViewer } from './core/live-viewer.js';
 import type {
   AuditConfig,
   TaskConfig,
@@ -83,6 +84,7 @@ export class AuditExecutor extends TaskExecutor {
   private crashStreak = 0;
   private startedAt: Date = new Date();
   private cancelRequested = false;
+  private auditLiveViewer: LiveViewer | null = null;
 
   constructor(config: AuditConfig, apiKey: string, provider: 'google' | 'openai' = 'google') {
     // Build a stub TaskConfig for the parent's driver setup. The parent will
@@ -146,6 +148,24 @@ export class AuditExecutor extends TaskExecutor {
         }`,
         { cause: err },
       );
+    }
+
+    // Start live viewer if --live is enabled (opt-in, zero overhead otherwise)
+    if (this.auditConfig.live) {
+      try {
+        const { LiveViewer: LV } = await import('./core/live-viewer.js');
+        this.auditLiveViewer = new LV(this.auditConfig.livePort ?? 7330);
+        this.auditLiveViewer.setTaskName(`audit:${this.auditConfig.bundleId}`);
+        await this.auditLiveViewer.start();
+        console.log(pc.cyan('👁  Live viewer: ') + pc.white(this.auditLiveViewer.url));
+        if (process.platform === 'darwin') {
+          const { exec } = await import('node:child_process');
+          exec(`open ${this.auditLiveViewer.url}`);
+        }
+      } catch {
+        console.log(pc.yellow('  ⚠️ Live viewer failed to start — continuing without it'));
+        this.auditLiveViewer = null;
+      }
     }
 
     let partialReason: AuditPartialReason | undefined;
@@ -331,6 +351,19 @@ export class AuditExecutor extends TaskExecutor {
           screenName,
         });
         await writeAnnotated(this.auditConfig.outputDir, step, annotated);
+
+        // Push to live viewer (fire-and-forget)
+        if (this.auditLiveViewer) {
+          this.auditLiveViewer.pushStep({
+            step,
+            maxSteps: this.auditConfig.maxSteps,
+            screenshotBase64: screenshotB64,
+            action: result.navigation.action,
+            reasoning: result.reasoning,
+            progress: result.progress,
+            params: result.navigation.params as Record<string, unknown> | undefined,
+          }).catch(() => { /* ignore push errors */ });
+        }
       } catch (err) {
         // Annotation failure should not kill the run — log and keep going.
         console.log(pc.dim(`  ⚠️  annotation failed: ${(err as Error).message}`));
@@ -568,6 +601,12 @@ export class AuditExecutor extends TaskExecutor {
       console.log(pc.yellow(`\n⚠️  Partial report written (reason: ${partialReason})`));
     }
     console.log(pc.dim(`\n📁 Report: ${path.resolve(this.auditConfig.outputDir)}`));
+
+    // Shut down live viewer
+    if (this.auditLiveViewer) {
+      await this.auditLiveViewer.stop();
+      this.auditLiveViewer = null;
+    }
   }
 
   // ── Driver lifecycle — delegate to parent's maestro ──────────
