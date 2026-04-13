@@ -333,16 +333,20 @@ export class AuditExecutor extends TaskExecutor {
         pc.green(`  🎬 Action: ${result.navigation.action}`) +
           pc.dim(` ${JSON.stringify(result.navigation.params ?? {})}`),
       );
-      if (result.audit?.issues.length) {
-        console.log(
-          pc.yellow(`  🔍 Issues found on this screen: ${result.audit.issues.length}`),
-        );
-      }
-
       // ── Collect + persist issues in parallel ────────────────
       let persistedIssues: AuditIssue[] = [];
-      if (result.audit?.issues?.length) {
-        const withIds = result.audit.issues.map((issue) => {
+      const filteredIssues = result.audit?.issues?.filter(
+        (issue) => !isSpecimenScreenIssue(screenName, issue),
+      );
+      const dropped = (result.audit?.issues?.length ?? 0) - (filteredIssues?.length ?? 0);
+      if (filteredIssues?.length || dropped) {
+        const parts: string[] = [];
+        if (filteredIssues?.length) parts.push(`${filteredIssues.length} issues`);
+        if (dropped) parts.push(`${dropped} specimen-screen filtered`);
+        console.log(pc.yellow(`  🔍 ${parts.join(', ')}`));
+      }
+      if (filteredIssues?.length) {
+        const withIds = filteredIssues.map((issue) => {
           this.issueCounter++;
           return {
             issue,
@@ -774,6 +778,19 @@ function isProcessAlive(pid: number): boolean {
     // EPERM means the process exists but we can't signal it — still alive.
     return (err as NodeJS.ErrnoException).code === 'EPERM';
   }
+}
+
+const SPECIMEN_SCREEN_PATTERN = /font|字體|typeface|字型|specimen|preview.*font|font.*preview/i;
+const SPECIMEN_PRINCIPLE_PATTERN = /contrast|readability|legibility/i;
+
+/** Code-level safety net: drop contrast/readability issues on font specimen screens. */
+function isSpecimenScreenIssue(
+  screenName: string,
+  issue: { title: string; principle: string },
+): boolean {
+  if (!SPECIMEN_SCREEN_PATTERN.test(screenName)) return false;
+  return SPECIMEN_PRINCIPLE_PATTERN.test(issue.principle) ||
+    SPECIMEN_PRINCIPLE_PATTERN.test(issue.title);
 }
 
 

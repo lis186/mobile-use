@@ -372,7 +372,13 @@ Apply Don Norman's principles (Affordance, Signifier, Feedback, Mapping, Constra
 - LOW: minor friction — tap target 34–44pt (below HIG but still tappable), contrast 3:1–4.5:1, cosmetic inconsistency, non-standard but learnable pattern
 Do NOT let the same measurement gap produce different severity ratings on different screens.
 
-== THREE-LAYER QUALITY CONTROL ==
+== CONTEXT FILTER (apply BEFORE quality control) ==
+Some screens exist to DEMONSTRATE a visual property, not to deliver content. On these screens, the demonstrated property is intentional and MUST NOT be flagged:
+- FONT PREVIEW / SPECIMEN screens (title contains a font name, weight name like "極細體"/"Thin"/"Bold", or "font"/"字體"): Do NOT report contrast, readability, or legibility issues about the previewed text. The thin/bold/decorative appearance IS the point.
+- COLOR SWATCH / THEME PREVIEW screens: Do NOT report contrast issues on color samples.
+If the screen's PURPOSE is to show what something looks like, the visual appearance is correct by definition.
+
+== FOUR-LAYER QUALITY CONTROL ==
 
 Layer 1 — EVIDENCE REQUIRED: every issue MUST cite concrete visual facts. Element sizes in points are shown next to each element in the accessibility data as "W×Hpt" — use these REAL measurements in your evidence and in the measured_width_pt / measured_height_pt fields. Do NOT estimate sizes from the screenshot. Vague impressions ("feels cluttered") are NOT issues.
 
@@ -418,6 +424,14 @@ BAD issue (reject — too vague, no evidence, shallow principle label, no cognit
   "confidence": 50,
   "recommendation": "Redesign navigation"
 }
+
+BAD issue (reject — flagging intentional design on a specimen/preview screen):
+{
+  "title": "Extremely thin font has poor readability",
+  "principle": "iOS HIG:Text contrast",
+  "evidence": "The body text uses an extremely thin font weight against a white background."
+}
+WHY THIS IS BAD: The screen title "極細體" means "Extremely Thin Font" — this IS a font preview screen. The thin appearance is the entire point. Do not flag intentional demonstrations as defects.
 
 == SYSTEM DIALOGS ==
 If you see an iOS permission dialog (camera, location, notifications, Face ID), tap the most permissive safe action (Allow / OK / Later) to dismiss it. Do NOT report system dialogs as UX issues.
