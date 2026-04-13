@@ -381,6 +381,9 @@ Layer 3 — ANTI-PATTERNS — NEVER report these:
 - Information density that's appropriate for the app's domain
 - iOS search bar / Spotlight field co-existing with a search button — this is the standard Settings pattern, not a "redundant search" issue
 - Duplicate of an issue you already reported on an earlier step for the same screen element — if you already flagged it, do not flag it again even if you revisit the screen
+- iOS modal sheets that can be dismissed by swiping down — do not flag the absence of a Done/Close button as a UX issue
+- Standard iOS status bar elements, home indicator, and notification bar — these are system chrome, not app UX issues
+- Standard iOS "pull to refresh" indicator on scroll views — this is expected platform behavior
 
 == GOOD vs BAD issue examples ==
 
