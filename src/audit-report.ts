@@ -57,14 +57,10 @@ export async function finalizeReport(
     readTimingsJsonSafe(path.join(outputDir, 'timings.json')),
   ]);
 
-  // Dedup: same screen + same title = same issue; keep the first occurrence.
-  const seen = new Set<string>();
-  const issues = rawIssues.filter((issue) => {
-    const key = `${issue.screenName}\0${issue.title}`;
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
+  // Two-pass dedup:
+  // 1. Exact match on screenName + title (case-insensitive)
+  // 2. Fuzzy match: same screenName + Jaccard bigram similarity > 0.5
+  const issues = deduplicateIssues(rawIssues);
 
   const summary = summarize(timings, ctx.model);
   const md = renderReport({ ctx, steps, issues, timings, summary });
@@ -368,6 +364,58 @@ function escapeMd(s: string): string {
 /** Escape for use inside a blockquote — just collapse newlines. */
 function escapeQuote(s: string): string {
   return s.replace(/\r?\n/g, ' ').trim();
+}
+
+// ── Dedup helpers ────────────────────────────────────────────
+
+/** Extract bigram set from a title for fuzzy comparison. */
+function titleBigrams(title: string): Set<string> {
+  const words = title.toLowerCase().replace(/[^a-z0-9\s]/g, '').split(/\s+/).filter(Boolean);
+  const bigrams = new Set<string>();
+  for (let i = 0; i < words.length - 1; i++) {
+    bigrams.add(`${words[i]} ${words[i + 1]}`);
+  }
+  // Single-word titles: use the word itself as the only bigram
+  if (words.length === 1 && words[0]) bigrams.add(words[0]);
+  return bigrams;
+}
+
+function jaccardSimilarity(a: Set<string>, b: Set<string>): number {
+  if (a.size === 0 && b.size === 0) return 0;
+  let intersection = 0;
+  for (const x of a) if (b.has(x)) intersection++;
+  const union = a.size + b.size - intersection;
+  return union === 0 ? 0 : intersection / union;
+}
+
+const JACCARD_THRESHOLD = 0.5;
+
+/**
+ * Two-pass dedup: exact (case-insensitive screenName+title), then fuzzy
+ * (Jaccard bigram > 0.5 on same screen). Keeps the first occurrence.
+ */
+function deduplicateIssues(raw: AuditIssue[]): AuditIssue[] {
+  // Pass 1: exact case-insensitive
+  const exactSeen = new Set<string>();
+  const afterExact = raw.filter((issue) => {
+    const key = `${issue.screenName.toLowerCase()}\0${issue.title.toLowerCase()}`;
+    if (exactSeen.has(key)) return false;
+    exactSeen.add(key);
+    return true;
+  });
+
+  // Pass 2: fuzzy within same screen
+  const kept: AuditIssue[] = [];
+  for (const issue of afterExact) {
+    const screen = issue.screenName.toLowerCase();
+    const bigrams = titleBigrams(issue.title);
+    const isDup = kept.some((existing) => {
+      if (existing.screenName.toLowerCase() !== screen) return false;
+      return jaccardSimilarity(bigrams, titleBigrams(existing.title)) >= JACCARD_THRESHOLD;
+    });
+    if (!isDup) kept.push(issue);
+  }
+  return kept;
 }
 
 /** Read timings.json if present, returning the raw StepTiming[] for re-summarizing. */
