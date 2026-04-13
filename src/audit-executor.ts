@@ -58,6 +58,7 @@ const NAVIGATION_ACTIONS = new Set<string>([
 const MAX_SCREENSHOT_RETRIES = 3;
 const STABLE_POLL_INTERVAL_MS = 250;
 const LOCK_DIR = '/tmp';
+const MAX_CONSECUTIVE_SWIPES = 4;
 
 export type AuditPartialReason = AuditErrorCode | 'E_UNEXPECTED';
 
@@ -75,6 +76,7 @@ export class AuditExecutor extends TaskExecutor {
   private readonly visited = new Map<string, VisitedScreen>();
   private unvisitedTargets: string[] = [];
   private readonly recentActions: string[] = [];
+  private consecutiveSwipes = 0;
   private readonly timings: StepTiming[] = [];
   private issueCounter = 0;
   private lockPath: string | null = null;
@@ -423,12 +425,28 @@ export class AuditExecutor extends TaskExecutor {
 
       // ── Execute the action ──────────────────────────────────
       const t3 = performance.now();
+      const isSwipe = result.navigation.action === 'swipe' || result.navigation.action === 'scroll';
       try {
         await this.executeAction(result.navigation);
         this.recentActions.push(this.formatAction(result.navigation));
       } catch (err) {
         console.log(pc.yellow(`  ⚠️  action failed: ${(err as Error).message}`));
         this.recentActions.push('error');
+      }
+
+      // ── Stuck detection: escape paginated content ──────────
+      if (isSwipe) {
+        this.consecutiveSwipes++;
+        if (this.consecutiveSwipes >= MAX_CONSECUTIVE_SWIPES) {
+          console.log(pc.yellow(`  ⚠️  Stuck: ${this.consecutiveSwipes} consecutive swipes — forcing back`));
+          try {
+            await this.executeAction({ action: 'back', params: {}, reasoning: 'stuck escape', progress: 0 });
+          } catch { /* best effort */ }
+          this.recentActions.push(`STUCK: forced back after ${this.consecutiveSwipes} consecutive swipes in paginated content — explore a different section`);
+          this.consecutiveSwipes = 0;
+        }
+      } else {
+        this.consecutiveSwipes = 0;
       }
       const t4 = performance.now();
 
