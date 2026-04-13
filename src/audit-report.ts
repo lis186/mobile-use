@@ -57,14 +57,18 @@ export async function finalizeReport(
     readTimingsJsonSafe(path.join(outputDir, 'timings.json')),
   ]);
 
-  // Dedup: same screen + same title = same issue; keep the first occurrence.
-  const seen = new Set<string>();
-  const issues = rawIssues.filter((issue) => {
-    const key = `${issue.screenName}\0${issue.title}`;
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
+  // Dedup: exact match (case-insensitive) + fuzzy Jaccard bigram similarity.
+  // If same screenName and title bigram similarity > 0.6, treat as duplicate.
+  const kept: AuditIssue[] = [];
+  for (const issue of rawIssues) {
+    const isDup = kept.some(
+      (existing) =>
+        existing.screenName.toLowerCase() === issue.screenName.toLowerCase() &&
+        jaccardBigram(existing.title, issue.title) > 0.6,
+    );
+    if (!isDup) kept.push(issue);
+  }
+  const issues = kept;
 
   const summary = summarize(timings, ctx.model);
   const md = renderReport({ ctx, steps, issues, timings, summary });
@@ -372,6 +376,26 @@ function escapeMd(s: string): string {
 /** Escape for use inside a blockquote — just collapse newlines. */
 function escapeQuote(s: string): string {
   return s.replace(/\r?\n/g, ' ').trim();
+}
+
+/** Compute Jaccard similarity on character bigrams of two strings. */
+function jaccardBigram(a: string, b: string): number {
+  const bigramsOf = (s: string): Set<string> => {
+    const lower = s.toLowerCase();
+    const set = new Set<string>();
+    for (let i = 0; i < lower.length - 1; i++) {
+      set.add(lower.slice(i, i + 2));
+    }
+    return set;
+  };
+  const setA = bigramsOf(a);
+  const setB = bigramsOf(b);
+  if (setA.size === 0 && setB.size === 0) return 1;
+  let intersection = 0;
+  for (const bg of setA) {
+    if (setB.has(bg)) intersection++;
+  }
+  return intersection / (setA.size + setB.size - intersection);
 }
 
 /** Read timings.json if present, returning the raw StepTiming[] for re-summarizing. */
