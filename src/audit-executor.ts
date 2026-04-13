@@ -84,6 +84,7 @@ export class AuditExecutor extends TaskExecutor {
   private startedAt: Date = new Date();
   private cancelRequested = false;
   private auditLiveViewer: LiveViewer | null = null;
+  private expectedAppLabel: string | null = null;
 
   constructor(config: AuditConfig, apiKey: string, provider: 'google' | 'openai' = 'google') {
     // Build a stub TaskConfig for the parent's driver setup. The parent will
@@ -262,21 +263,33 @@ export class AuditExecutor extends TaskExecutor {
       }
 
       // ── Scope guard — detect cross-app drift ───────────────
-      const treeAppId = tree ? extractRootAppId(tree) : null;
-      if (treeAppId && treeAppId !== this.auditConfig.bundleId) {
-        console.log(
-          pc.yellow(`  ⚠️  Scope drift: in "${treeAppId}", expected "${this.auditConfig.bundleId}" — going back`),
-        );
-        try {
-          await this.executeAction({ action: 'back', params: {}, reasoning: 'scope guard', progress: 0 });
-        } catch {
-          // back() may fail if we're at the root of another app — try launching target app
-          try {
-            await this.executeAction({ action: 'launchApp', params: { appId: this.auditConfig.bundleId }, reasoning: 'scope guard relaunch', progress: 0 });
-          } catch { /* best effort */ }
+      // XCTest's /viewHierarchy filters by appIds — if the target app isn't
+      // in the foreground, the tree comes back empty (caught by detectAppCrash).
+      // WDA returns the full tree regardless of which app is in front, so we
+      // need an explicit check. extractRootAppId returns the display name
+      // (e.g. "Settings"), not the bundle ID, so we store the expected display
+      // name from the first non-empty tree and compare against that.
+      if (tree && this.auditConfig.runner === 'wda') {
+        const treeAppId = extractRootAppId(tree);
+        if (treeAppId) {
+          if (!this.expectedAppLabel) {
+            // First successful tree — record the display name as baseline
+            this.expectedAppLabel = treeAppId;
+          } else if (treeAppId !== this.expectedAppLabel) {
+            console.log(
+              pc.yellow(`  ⚠️  Scope drift: in "${treeAppId}", expected "${this.expectedAppLabel}" — going back`),
+            );
+            try {
+              await this.executeAction({ action: 'back', params: {}, reasoning: 'scope guard', progress: 0 });
+            } catch {
+              try {
+                await this.executeAction({ action: 'launchApp', params: { appId: this.auditConfig.bundleId }, reasoning: 'scope guard relaunch', progress: 0 });
+              } catch { /* best effort */ }
+            }
+            this.recentActions.push('back (scope guard)');
+            continue;
+          }
         }
-        this.recentActions.push('back (scope guard)');
-        continue; // skip AI call, re-observe next iteration
       }
 
       // ── Decide ──────────────────────────────────────────────
