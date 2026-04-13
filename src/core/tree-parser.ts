@@ -196,9 +196,7 @@ function walkXCTestNode(
         const pctY = Math.round((f.Y / screenH) * 100);
         const pctX2 = Math.round(((f.X + f.Width) / screenW) * 100);
         const pctY2 = Math.round(((f.Y + f.Height) / screenH) * 100);
-        const wPt = Math.round(f.Width);
-        const hPt = Math.round(f.Height);
-        lines.push(`[${typeName}] "${label}" (${pctX},${pctY} - ${pctX2},${pctY2}) ${wPt}×${hPt}pt`);
+        lines.push(`[${typeName}] "${label}" (${pctX},${pctY} - ${pctX2},${pctY2}) ${Math.round(f.Width)}×${Math.round(f.Height)}pt`);
       }
     } else {
       lines.push(`[${typeName}] "${label}"`);
@@ -210,35 +208,6 @@ function walkXCTestNode(
       walkXCTestNode(child, lines, screenW, screenH);
     }
   }
-}
-
-/**
- * Extract the root Application bundle identifier from a raw tree string.
- * XCTest trees: JSON with axElement.identifier
- * WDA trees: XML with XCUIElementTypeApplication name="..."
- * Returns null if the tree format is unrecognised or has no app identifier.
- */
-export function extractRootAppId(raw: string): string | null {
-  if (!raw || raw.trim().length < 5) return null;
-
-  // XCTest JSON path
-  if (!raw.trimStart().startsWith('<')) {
-    try {
-      const json = JSON.parse(raw) as { axElement?: { elementType?: number; identifier?: string } };
-      if (json.axElement?.elementType === 2 && json.axElement.identifier) {
-        return json.axElement.identifier;
-      }
-    } catch { /* not JSON */ }
-  }
-
-  // WDA XML path — Application element's name attribute is the bundle ID
-  const appMatch = raw.match(/<XCUIElementTypeApplication\s+([^>]*)>/);
-  if (appMatch) {
-    const nameMatch = appMatch[1]!.match(/\bname="([^"]*)"/);
-    if (nameMatch) return nameMatch[1]!;
-  }
-
-  return null;
 }
 
 // ── Audit-mode helpers ───────────────────────────────────────────

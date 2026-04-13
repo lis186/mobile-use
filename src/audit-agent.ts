@@ -366,15 +366,9 @@ Apply Don Norman's principles (Affordance, Signifier, Feedback, Mapping, Constra
 - Minimum system font size: 11 pt
 - Standard platform navigation (tab bar, back button, modal sheet) is CORRECT, not confusing
 
-== SEVERITY RUBRIC (use these rules consistently) ==
-- **High**: blocks task completion, causes data loss, or completely prevents access to a feature
-- **Medium**: causes measurable friction — tap target < 34pt on either axis, contrast < 3:1, error state with no recovery path, critical information hidden behind unnecessary interaction
-- **Low**: minor friction — tap target 34–43pt (close but below 44pt minimum), contrast 3:1–4.5:1 for body text, cosmetic inconsistency that doesn't impede task completion
-Do NOT assign severity by gut feeling. Use the measured values from the accessibility tree to determine the correct bucket.
-
 == THREE-LAYER QUALITY CONTROL ==
 
-Layer 1 — EVIDENCE REQUIRED: every issue MUST cite concrete visual facts from the accessibility tree data above. Each element line includes actual dimensions (e.g. "44×44pt"). Use ONLY these real measurements — NEVER estimate or guess sizes. If the tree provides "28×28pt" for a button, cite that exact number. Vague impressions ("feels cluttered") or made-up measurements ("approximately 22.5pt") are NOT acceptable.
+Layer 1 — EVIDENCE REQUIRED: every issue MUST cite concrete visual facts. Element sizes in points are shown next to each element in the accessibility data as "W×Hpt" — use these REAL measurements in your evidence and in the measured_width_pt / measured_height_pt fields. Do NOT estimate sizes from the screenshot. Vague impressions ("feels cluttered") are NOT issues.
 
 Layer 2 — COMPARATIVE ANCHORING: compare against iOS HIG numbers above. Don't flag issues that meet the standard.
 
@@ -386,41 +380,27 @@ Layer 3 — ANTI-PATTERNS — NEVER report these:
 - Standard button styles as "lacking affordance" (iOS buttons are blue; that IS the affordance)
 - Information density that's appropriate for the app's domain
 - iOS search bar / Spotlight field co-existing with a search button — this is the standard Settings pattern, not a "redundant search" issue
-- iOS modal sheets that can be dismissed by swiping down — standard iOS behaviour per HIG; do NOT flag the absence of an explicit Done/Close button as a UX issue
-- Accessibility-tree elements that are standard iOS system UI chrome (status bar, home indicator, system clock, battery, signal) are not actionable UX issues
-- Standard iOS share sheets, action sheets, and activity views — these are system-provided components, not custom UX
 - Duplicate of an issue you already reported on an earlier step for the same screen element — if you already flagged it, do not flag it again even if you revisit the screen
 
 == GOOD vs BAD issue examples ==
 
-GOOD issue (specific, measurable, causal reasoning):
+GOOD issue (specific, measurable, actionable):
 {
   "title": "Search icon too small to tap reliably",
   "severity": "high",
   "principle": "iOS HIG:Tap Target",
-  "cognitiveMechanism": "The small hit area forces fine motor precision under Fitts's Law. A rushed user with a thumb-based grip will miss repeatedly, triggering frustration and perceived app sluggishness.",
-  "evidence": "Search icon (tree: 20×20pt) is below the 44×44pt minimum. Adjacent edit button is 28pt away.",
+  "evidence": "Search icon at top-right measures 20×20pt per the accessibility tree — below the 44×44pt HIG minimum. Adjacent edit button is 28pt away.",
   "measured_width_pt": 20,
   "measured_height_pt": 20,
   "confidence": 85,
   "recommendation": "Extend hit area to 44x44pt using extendedEdgeInsets; alternative: move search to a dedicated row below nav bar"
 }
 
-BAD issue #1 (reject — shallow label, no causal reasoning):
-{
-  "title": "Inconsistent button style",
-  "principle": "Nielsen:Consistency",
-  "cognitiveMechanism": "This violates Nielsen's consistency heuristic.",
-  "evidence": "Buttons look different on this screen."
-}
-→ WHY it's bad: cognitiveMechanism just restates the principle tag. It must explain WHAT the user experiences: e.g. "The user builds a mental model that rounded blue elements are tappable, then encounters a flat gray button and skips it because it doesn't match, creating a gulf of evaluation."
-
-BAD issue #2 (reject — too vague, no evidence, violates anti-patterns):
+BAD issue (reject — too vague, no evidence, violates anti-patterns):
 {
   "title": "Navigation is confusing",
   "severity": "medium",
   "principle": "Nielsen:Consistency",
-  "cognitiveMechanism": "Users might get confused.",
   "evidence": "The app feels hard to navigate.",
   "confidence": 50,
   "recommendation": "Redesign navigation"

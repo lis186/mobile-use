@@ -17,14 +17,10 @@ export const auditIssueSchema = z.object({
     .describe('concise human-readable issue title, 5-60 characters'),
   severity: z
     .enum(['high', 'medium', 'low'])
-    .describe('high = blocks task or causes data loss; medium = measurable friction (tap target <34pt, contrast <3:1, no error recovery); low = minor friction (tap 34-43pt, contrast 3:1-4.5:1, cosmetic)'),
+    .describe('high = blocks task, medium = causes friction, low = minor'),
   principle: z
     .string()
     .describe('violated principle, e.g. "Norman:Affordance" or "Nielsen:Consistency" or "iOS HIG:Tap Target"'),
-  cognitiveMechanism: z
-    .string()
-    .min(20)
-    .describe('explain HOW the user\'s cognition fails: what mental model breaks, what gulf of execution/evaluation opens, or what heuristic is violated and what the user experiences as a result. Must be causal reasoning, not just a label.'),
   persona: z
     .enum(['rushed', 'firsttime', 'power'])
     .optional()
@@ -33,18 +29,6 @@ export const auditIssueSchema = z.object({
     .string()
     .min(20)
     .describe('concrete visual evidence you observed, ≥ 20 chars; must cite specific pixels/colors/sizes/positions, not vague impressions'),
-  measured_width_pt: z
-    .number()
-    .int()
-    .min(0)
-    .optional()
-    .describe('actual width in points from the accessibility tree frame data; omit only when no frame data is available'),
-  measured_height_pt: z
-    .number()
-    .int()
-    .min(0)
-    .optional()
-    .describe('actual height in points from the accessibility tree frame data; omit only when no frame data is available'),
   confidence: z
     .number()
     .int()
@@ -55,6 +39,14 @@ export const auditIssueSchema = z.object({
     .string()
     .min(10)
     .describe('specific actionable fix a developer can implement'),
+  measured_width_pt: z
+    .number()
+    .optional()
+    .describe('actual width in points from accessibility tree frame data; include when citing a tap target size issue'),
+  measured_height_pt: z
+    .number()
+    .optional()
+    .describe('actual height in points from accessibility tree frame data; include when citing a tap target size issue'),
 });
 
 export const auditBlockSchema = z.object({
