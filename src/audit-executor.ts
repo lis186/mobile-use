@@ -327,6 +327,7 @@ export class AuditExecutor extends TaskExecutor {
               severity: issue.severity,
               screenName,
               principle: issue.principle,
+              cognitiveMechanism: issue.cognitiveMechanism,
               persona: issue.persona,
               evidence: issue.evidence,
               measured_width_pt: issue.measured_width_pt,

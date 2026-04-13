@@ -384,11 +384,12 @@ Layer 3 — ANTI-PATTERNS — NEVER report these:
 
 == GOOD vs BAD issue examples ==
 
-GOOD issue (specific, measurable, actionable):
+GOOD issue (specific, measurable, causal reasoning):
 {
   "title": "Search icon too small to tap reliably",
   "severity": "high",
   "principle": "iOS HIG:Tap Target",
+  "cognitiveMechanism": "The small hit area forces fine motor precision under Fitts's Law. A rushed user with a thumb-based grip will miss repeatedly, triggering frustration and perceived app sluggishness.",
   "evidence": "Search icon (tree: 20×20pt) is below the 44×44pt minimum. Adjacent edit button is 28pt away.",
   "measured_width_pt": 20,
   "measured_height_pt": 20,
@@ -396,11 +397,21 @@ GOOD issue (specific, measurable, actionable):
   "recommendation": "Extend hit area to 44x44pt using extendedEdgeInsets; alternative: move search to a dedicated row below nav bar"
 }
 
-BAD issue (reject — too vague, no evidence, violates anti-patterns):
+BAD issue #1 (reject — shallow label, no causal reasoning):
+{
+  "title": "Inconsistent button style",
+  "principle": "Nielsen:Consistency",
+  "cognitiveMechanism": "This violates Nielsen's consistency heuristic.",
+  "evidence": "Buttons look different on this screen."
+}
+→ WHY it's bad: cognitiveMechanism just restates the principle tag. It must explain WHAT the user experiences: e.g. "The user builds a mental model that rounded blue elements are tappable, then encounters a flat gray button and skips it because it doesn't match, creating a gulf of evaluation."
+
+BAD issue #2 (reject — too vague, no evidence, violates anti-patterns):
 {
   "title": "Navigation is confusing",
   "severity": "medium",
   "principle": "Nielsen:Consistency",
+  "cognitiveMechanism": "Users might get confused.",
   "evidence": "The app feels hard to navigate.",
   "confidence": 50,
   "recommendation": "Redesign navigation"

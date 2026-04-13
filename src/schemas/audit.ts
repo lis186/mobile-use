@@ -21,6 +21,10 @@ export const auditIssueSchema = z.object({
   principle: z
     .string()
     .describe('violated principle, e.g. "Norman:Affordance" or "Nielsen:Consistency" or "iOS HIG:Tap Target"'),
+  cognitiveMechanism: z
+    .string()
+    .min(20)
+    .describe('explain HOW the user\'s cognition fails: what mental model breaks, what gulf of execution/evaluation opens, or what heuristic is violated and what the user experiences as a result. Must be causal reasoning, not just a label.'),
   persona: z
     .enum(['rushed', 'firsttime', 'power'])
     .optional()

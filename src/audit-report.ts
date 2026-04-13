@@ -170,6 +170,9 @@ function renderIssueSection(issue: AuditIssue, ctx: AuditReportContext): string 
 
 ![Annotated screenshot](${annotatedPath})
 
+**Cognitive Impact**:
+${issue.cognitiveMechanism ? `> ${escapeQuote(issue.cognitiveMechanism)}` : '> (not provided)'}
+
 **Evidence** (what the AI observed):
 > ${escapeQuote(issue.evidence)}
 
