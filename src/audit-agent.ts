@@ -366,6 +366,12 @@ Apply Don Norman's principles (Affordance, Signifier, Feedback, Mapping, Constra
 - Minimum system font size: 11 pt
 - Standard platform navigation (tab bar, back button, modal sheet) is CORRECT, not confusing
 
+== SEVERITY RUBRIC (use these rules consistently) ==
+- **High**: blocks task completion, causes data loss, or completely prevents access to a feature
+- **Medium**: causes measurable friction — tap target < 34pt on either axis, contrast < 3:1, error state with no recovery path, critical information hidden behind unnecessary interaction
+- **Low**: minor friction — tap target 34–43pt (close but below 44pt minimum), contrast 3:1–4.5:1 for body text, cosmetic inconsistency that doesn't impede task completion
+Do NOT assign severity by gut feeling. Use the measured values from the accessibility tree to determine the correct bucket.
+
 == THREE-LAYER QUALITY CONTROL ==
 
 Layer 1 — EVIDENCE REQUIRED: every issue MUST cite concrete visual facts from the accessibility tree data above. Each element line includes actual dimensions (e.g. "44×44pt"). Use ONLY these real measurements — NEVER estimate or guess sizes. If the tree provides "28×28pt" for a button, cite that exact number. Vague impressions ("feels cluttered") or made-up measurements ("approximately 22.5pt") are NOT acceptable.

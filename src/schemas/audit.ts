@@ -17,7 +17,7 @@ export const auditIssueSchema = z.object({
     .describe('concise human-readable issue title, 5-60 characters'),
   severity: z
     .enum(['high', 'medium', 'low'])
-    .describe('high = blocks task, medium = causes friction, low = minor'),
+    .describe('high = blocks task or causes data loss; medium = measurable friction (tap target <34pt, contrast <3:1, no error recovery); low = minor friction (tap 34-43pt, contrast 3:1-4.5:1, cosmetic)'),
   principle: z
     .string()
     .describe('violated principle, e.g. "Norman:Affordance" or "Nielsen:Consistency" or "iOS HIG:Tap Target"'),
