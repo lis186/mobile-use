@@ -3,7 +3,13 @@
  * into concise text for LLM consumption.
  */
 
+import type { TreeQuality } from '../types.js';
+
 const MAX_CHARS = 2000;
+
+/** Element count thresholds for quality grading (Decision 5). */
+const GRADE_RICH_MIN = 10;
+const GRADE_SPARSE_MIN = 2;
 
 export function parseAccessibilityTree(raw: string): string {
   if (raw.trimStart().startsWith('<') || raw.trimStart().startsWith('<?xml')) {
@@ -24,18 +30,22 @@ export function parseAccessibilityTree(raw: string): string {
 export function parseWDATree(xml: string): string {
   const lines: string[] = [];
 
-  // Extract screen dimensions from root Application element
-  let screenW = 393, screenH = 852;
-  const appMatch = xml.match(/<XCUIElementTypeApplication\s+[^>]*?width="(\d+)"[^>]*?height="(\d+)"/);
-  if (appMatch) {
-    screenW = parseInt(appMatch[1]!, 10);
-    screenH = parseInt(appMatch[2]!, 10);
-  }
-
   const getAttr = (attrs: string, name: string): string | null => {
     const m = attrs.match(new RegExp(`\\b${name}="([^"]*)"`));
     return m ? m[1]! : null;
   };
+
+  // Extract screen dimensions from root Application element.
+  // Use an order-independent lookup so XML attribute ordering can't break us.
+  let screenW = 393, screenH = 852;
+  const appMatch = xml.match(/<XCUIElementTypeApplication\s+([^>]*)>/);
+  if (appMatch) {
+    const appAttrs = appMatch[1]!;
+    const w = getAttr(appAttrs, 'width');
+    const h = getAttr(appAttrs, 'height');
+    if (w) screenW = parseInt(w, 10);
+    if (h) screenH = parseInt(h, 10);
+  }
 
   const elementRegex = /<(XCUIElementType\w+)\s+([^>]*?)\/?\s*>/g;
   let match;
@@ -198,4 +208,76 @@ function walkXCTestNode(
       walkXCTestNode(child, lines, screenW, screenH);
     }
   }
+}
+
+// ── Audit-mode helpers ───────────────────────────────────────────
+
+/** Rich detail from a parsed tree: text + grade + count for audit-mode use. */
+export interface ParsedTree {
+  text: string;
+  grade: TreeQuality;
+  labeledElementCount: number;
+}
+
+/** Parse a raw tree and also return its quality grade and element count. */
+export function parseAccessibilityTreeDetailed(raw: string): ParsedTree {
+  const text = parseAccessibilityTree(raw);
+  const labeledElementCount = text ? text.split('\n').filter(Boolean).length : 0;
+  let grade: TreeQuality;
+  if (labeledElementCount >= GRADE_RICH_MIN) grade = 'rich';
+  else if (labeledElementCount >= GRADE_SPARSE_MIN) grade = 'sparse';
+  else grade = 'empty';
+  return { text, grade, labeledElementCount };
+}
+
+/**
+ * Pull the raw label from a single parsed line.
+ * Example input: `[Button] "Settings" (10,20 - 30,40)`
+ * Returns: `Settings` (or `null` if the line can't be parsed)
+ */
+function extractLabelFromLine(line: string): string | null {
+  const m = line.match(/^\[[^\]]+\]\s+"([^"]+)"/);
+  return m ? m[1]! : null;
+}
+
+/**
+ * Extract the sorted list of labels from a parsed tree text.
+ * Used as the input to MD5 fingerprinting for rich-grade screens.
+ */
+export function extractLabels(parsedText: string): string[] {
+  if (!parsedText) return [];
+  const labels: string[] = [];
+  for (const line of parsedText.split('\n')) {
+    const label = extractLabelFromLine(line);
+    if (label) labels.push(label);
+  }
+  return labels.sort();
+}
+
+/**
+ * Extract navigation target labels from a parsed tree.
+ * Prioritizes tab bar / nav bar / menu items and common section headings.
+ * Returns an empty array when the tree lacks recognisable navigation markers.
+ */
+export function extractNavTargets(parsedText: string): string[] {
+  if (!parsedText) return [];
+  const targets: string[] = [];
+  const seen = new Set<string>();
+  // Types most likely to represent navigation affordances.
+  const navTypes = new Set(['Button', 'Cell', 'Link', 'TabBar', 'NavBar', 'MenuItem', 'Tab']);
+
+  for (const line of parsedText.split('\n')) {
+    const typeMatch = line.match(/^\[([^\]]+)\]/);
+    if (!typeMatch) continue;
+    const type = typeMatch[1]!;
+    if (!navTypes.has(type)) continue;
+    const label = extractLabelFromLine(line);
+    if (!label) continue;
+    if (label.length > 40) continue; // long strings are usually content, not nav
+    if (seen.has(label)) continue;
+    seen.add(label);
+    targets.push(label);
+  }
+
+  return targets;
 }
