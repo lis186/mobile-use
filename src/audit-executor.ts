@@ -29,7 +29,7 @@ import { AuditError, isAuditError, type AuditErrorCode } from './errors/audit-er
 import { WDAClient } from './wda.js';
 import { XCTestClient } from './xctest.js';
 import { fingerprintScreen } from './core/screen-fingerprint.js';
-import { extractNavTargets } from './core/tree-parser.js';
+import { extractNavTargets, extractRootAppId } from './core/tree-parser.js';
 import { appendStep, appendIssue } from './core/jsonl-writer.js';
 import { saveEvidence } from './core/evidence.js';
 import { annotateScreenshot, writeAnnotated, firstParamText } from './core/annotate.js';
@@ -259,6 +259,24 @@ export class AuditExecutor extends TaskExecutor {
         }
       } else {
         this.crashStreak = 0;
+      }
+
+      // ── Scope guard — detect cross-app drift ───────────────
+      const treeAppId = tree ? extractRootAppId(tree) : null;
+      if (treeAppId && treeAppId !== this.auditConfig.bundleId) {
+        console.log(
+          pc.yellow(`  ⚠️  Scope drift: in "${treeAppId}", expected "${this.auditConfig.bundleId}" — going back`),
+        );
+        try {
+          await this.executeAction({ action: 'back', params: {}, reasoning: 'scope guard', progress: 0 });
+        } catch {
+          // back() may fail if we're at the root of another app — try launching target app
+          try {
+            await this.executeAction({ action: 'launchApp', params: { appId: this.auditConfig.bundleId }, reasoning: 'scope guard relaunch', progress: 0 });
+          } catch { /* best effort */ }
+        }
+        this.recentActions.push('back (scope guard)');
+        continue; // skip AI call, re-observe next iteration
       }
 
       // ── Decide ──────────────────────────────────────────────
