@@ -391,8 +391,12 @@ function jaccardSimilarity(a: Set<string>, b: Set<string>): number {
 const JACCARD_THRESHOLD = 0.5;
 
 /**
- * Two-pass dedup: exact (case-insensitive screenName+title), then fuzzy
- * (Jaccard bigram > 0.5 on same screen). Keeps the first occurrence.
+ * Three-pass dedup:
+ * 1. Exact match on screenName + title (case-insensitive)
+ * 2. Fuzzy title match within same screen (Jaccard > 0.5)
+ * 3. Cross-screen principle dedup: same principle + similar title OR similar evidence
+ *    catches the case where the AI gives different screen names to the same screen
+ *    (e.g. "蘋方-簡 > 極細體 (Page 2)" vs "Font example page 2 (極細體)")
  */
 function deduplicateIssues(raw: AuditIssue[]): AuditIssue[] {
   // Pass 1: exact case-insensitive
@@ -405,13 +409,29 @@ function deduplicateIssues(raw: AuditIssue[]): AuditIssue[] {
   });
 
   // Pass 2: fuzzy within same screen
-  const kept: AuditIssue[] = [];
+  const afterFuzzy: AuditIssue[] = [];
   for (const issue of afterExact) {
     const screen = issue.screenName.toLowerCase();
     const bigrams = titleBigrams(issue.title);
-    const isDup = kept.some((existing) => {
+    const isDup = afterFuzzy.some((existing) => {
       if (existing.screenName.toLowerCase() !== screen) return false;
       return jaccardSimilarity(bigrams, titleBigrams(existing.title)) >= JACCARD_THRESHOLD;
+    });
+    if (!isDup) afterFuzzy.push(issue);
+  }
+
+  // Pass 3: cross-screen — same principle + (similar title OR similar evidence)
+  const kept: AuditIssue[] = [];
+  for (const issue of afterFuzzy) {
+    const principle = issue.principle.toLowerCase();
+    const titleBi = titleBigrams(issue.title);
+    const evidenceBi = titleBigrams(issue.evidence);
+    const isDup = kept.some((existing) => {
+      if (existing.principle.toLowerCase() !== principle) return false;
+      const titleSim = jaccardSimilarity(titleBi, titleBigrams(existing.title));
+      if (titleSim >= JACCARD_THRESHOLD) return true;
+      const evidenceSim = jaccardSimilarity(evidenceBi, titleBigrams(existing.evidence));
+      return evidenceSim >= JACCARD_THRESHOLD;
     });
     if (!isDup) kept.push(issue);
   }
