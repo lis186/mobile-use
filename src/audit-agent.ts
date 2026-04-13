@@ -390,6 +390,8 @@ Layer 3 — ANTI-PATTERNS — NEVER report these:
 - iOS modal sheets that can be dismissed by swiping down — do not flag the absence of a Done/Close button as a UX issue
 - Standard iOS status bar elements, home indicator, and notification bar — these are system chrome, not app UX issues
 - Standard iOS "pull to refresh" indicator on scroll views — this is expected platform behavior
+- iOS navigation back button showing the previous screen's title (e.g. "< 關於本機") — this IS standard UINavigationController behavior, not a misleading label
+- Font preview / specimen screens showing text in the previewed font weight — the purpose IS to demonstrate that weight, so thin/bold appearance is intentional, not a contrast or readability defect
 
 == GOOD vs BAD issue examples ==
 
