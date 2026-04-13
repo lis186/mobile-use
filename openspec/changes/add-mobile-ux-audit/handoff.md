@@ -7,12 +7,12 @@
 
 ## TL;DR
 
-- **Branch**: `feature/mobile-ux-audit` (lives in `/Users/justinlee/dev/phone-use`)
-- **Progress**: **103 / 111 tasks done** (~93 %). Everything through Group 17 dogfood (0% FP across three apps) is committed. Only 14A live viewer (6), 16.2 run-mode e2e (1), and 19.2 cross-Node verify (1) remain.
-- **Status**: Path B landed on 2026-04-12 across three commits. `tsc --noEmit` clean, `npm test` → 107/107 green, `npm run build` produces `dist/` cleanly. The only tasks still blocked are those that need a live AI call: Group 16.2 (run-mode e2e), Group 17.1–17.10 (full dogfood) — both gated on the Gemini 2.5 Flash daily quota resetting at UTC midnight, or on a paid-tier upgrade.
-- **Last commit**: `c922de7 feat(audit): Group 17 dogfood passed — 0% FP across Settings/Maps/Safari`
+- **Branch**: `phase2-sprint1` (based on `main` which contains merged Phase 1)
+- **Progress**: **Phase 1 merged to main.** Sprint 1 (Phase 2) focuses on report quality fixes — from 2/10 → 6-7/10.
+- **Status**: Sprint 1 C1-C3, H1-H3, P1, P3 all committed. P4+P5 (subtree escape + step estimation) in progress.
+- **Last commit**: `d31ec6f fix(audit): P3 — escape heuristic for paginated content stuck loops`
 - **Working tree**: clean (ignore local `audit-output/` dir if present)
-- **Next obvious step**: wait for UTC midnight (~ 5 hours from 2026-04-12 19:20 UTC at time of writing) and then run Group 17.1 dogfood with `--rpm-limit 5 --max-retries 0` on a clean output directory. Everything else Phase 1 needs is already committed.
+- **Next obvious step**: implement P4 (relaunch escape) + P5 (step budget estimation), then final dogfood verification.
 
 ---
 
@@ -585,3 +585,49 @@ Use this after any group is finished. The `openspec status --change "add-mobile-
 ---
 
 **End of handoff. You have everything you need. Start with §11 (Path A, BUG-B).**
+
+---
+
+## 9 · Sprint 1 — Report Quality Fixes (Phase 2)
+
+**Branch**: `phase2-sprint1` (based on `main` which contains merged Phase 1)
+**Goal**: Report quality from 2/10 → 6-7/10
+**Date**: 2026-04-13
+
+### Completed
+
+| ID | Fix | Commit | LOC |
+|----|-----|--------|-----|
+| C1 | Real frame dimensions in tree output | `397f74f` | ~120 |
+| C2 | `cognitiveImpact` field + GOOD/BAD examples | `c524072` | ~30 |
+| C3 | Scope guard (cross-app drift detection) | `683eaef`, `755a743` | ~30 |
+| H1 | Three-pass dedup (exact → fuzzy → cross-screen principle) | `b57718f`, `76f977e` | ~40 |
+| H2 | Anti-patterns (modal, chrome, back button, font specimen) | `4cccd00`, `57d937f` | ~10 |
+| H3 | Severity calibration rubric | `b2cedf2` | ~20 |
+| P1 | Font specimen triple-layer defense | `38115c2` | ~40 |
+| P3 | Consecutive swipe escape heuristic | `d31ec6f` | ~18 |
+
+### In Progress
+
+| ID | Fix | Status |
+|----|-----|--------|
+| P4 | Stuck escape → relaunch app | Designed, not yet implemented |
+| P5 | Pre-audit step budget estimation | Designed, not yet implemented |
+| V1 | Final dogfood verification | Blocked on P4+P5 |
+
+### Dogfood Results
+
+| Run | Issues | False Positives | Key Finding |
+|-----|--------|----------------|-------------|
+| v1 (pre-fix) | 4 | 3 (75%) | Flagging iOS standard elements |
+| v2 (C1-H3) | 13 | 10 (77%) | 8 duplicate font contrast issues |
+| v3 (+ P1) | 5 | 4 (80%) | Font preview still leaking |
+| v4 (+ P1 triple-layer) | 0 | 0 | Agent trapped in font subtree, never left |
+
+### Design Decisions (from pre-mortem)
+
+- **Relaunch over back**: stuck escape should relaunch app, not just go back one level
+- **Step estimation before audit**: parse home screen tree to count sections × 3, show coverage %
+- **Overview mode deferred**: pre-mortem identified scope creep risk; validate relaunch fix first
+- **Multi-session exploration deferred**: needs validation that single-session coverage is insufficient
+- **Deterministic replay navigation deferred**: path fragility risk identified in pre-mortem

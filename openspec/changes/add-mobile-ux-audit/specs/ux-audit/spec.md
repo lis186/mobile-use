@@ -310,6 +310,70 @@ The audit executor SHALL enforce a configurable rate limit on AI calls and a har
 - **WHEN** the audit agent calls `generateObject`
 - **THEN** it sets `maxRetries: 1` rather than the SDK default of 2, since the rate limiter now prevents the bursts that retries were meant to absorb
 
+### Requirement: Specimen screen context filter
+The audit executor SHALL drop contrast, readability, and legibility issues when the current screen is a font preview, specimen, or similar demonstration screen.
+
+#### Scenario: Font preview screen detected by screen name
+- **WHEN** the screen name matches a font/specimen pattern (contains "font", "字體", "typeface", "字型", "specimen", or "preview.*font")
+- **AND** the issue's principle or title contains "contrast", "readability", or "legibility"
+- **THEN** the issue is dropped before persistence and not included in the report
+
+#### Scenario: Prompt-level context filter
+- **WHEN** the audit system prompt is built
+- **THEN** it includes a CONTEXT FILTER section before the quality control layers, explicitly instructing the agent not to flag demonstrated visual properties on specimen screens
+
+#### Scenario: BAD example for specimen screen
+- **WHEN** the audit system prompt is built
+- **THEN** it includes a BAD example showing a font preview false positive with an explanation of why it is wrong
+
+### Requirement: Cross-screen principle-based dedup
+The report renderer SHALL deduplicate issues that share the same principle and similar content across different screens, not only within the same screen.
+
+#### Scenario: Same-screen fuzzy dedup
+- **WHEN** two issues on the same screen have title bigram Jaccard similarity ≥ 0.5
+- **THEN** only the first-discovered issue is kept
+
+#### Scenario: Cross-screen principle dedup
+- **WHEN** two issues on different screens share the same principle AND have title bigram Jaccard similarity ≥ 0.5 OR evidence bigram Jaccard similarity ≥ 0.5
+- **THEN** only the first-discovered issue is kept
+
+### Requirement: Consecutive swipe escape heuristic
+The audit executor SHALL detect when the agent is stuck in paginated content and force an escape.
+
+#### Scenario: Swipe loop detected
+- **WHEN** the agent performs 4 consecutive swipe or scroll actions without any other action type
+- **THEN** the executor forces a `back` navigation action and injects a STUCK message into `recentActions`
+
+#### Scenario: Swipe counter reset
+- **WHEN** the agent performs any non-swipe action (tap, tapText, back, etc.)
+- **THEN** the consecutive swipe counter resets to 0
+
+### Requirement: Subtree escape via app relaunch
+When the agent is trapped in a subtree (repeatedly revisiting known screens), the executor SHALL relaunch the app to return to the root screen.
+
+#### Scenario: Stuck escape triggers relaunch instead of back
+- **WHEN** the consecutive swipe escape triggers AND the agent has been in the same area for multiple stuck cycles
+- **THEN** the executor relaunches the app (returning to its root screen) instead of navigating back one level
+
+#### Scenario: Relaunch injects exploration guidance
+- **WHEN** the app is relaunched due to a stuck escape
+- **THEN** a message is injected into `recentActions` instructing the agent to explore a completely different section
+
+### Requirement: Pre-audit step budget estimation
+Before the audit loop begins, the executor SHALL estimate the number of steps needed for shallow coverage and display the estimate to the user.
+
+#### Scenario: Section count from home screen
+- **WHEN** the audit starts and the app's home screen is loaded
+- **THEN** the executor parses the accessibility tree to count interactive sections (tappable rows with navigation affordances)
+
+#### Scenario: Coverage estimate displayed
+- **WHEN** the section count is determined
+- **THEN** the console displays the estimated steps needed (sections × 3), the configured step budget, and the expected coverage percentage
+
+#### Scenario: No AI call required
+- **WHEN** the step budget estimation runs
+- **THEN** it uses only the accessibility tree parser — no LLM call is made and no tokens are consumed
+
 ### Requirement: Phase 1 runner and device scope
 Phase 1 of the audit feature SHALL target iOS 26 simulators only via the `xctest` runner.
 

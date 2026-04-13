@@ -7,7 +7,9 @@
 
 ## Critical — Must fix before external-facing use
 
-### C1. Measurement hallucination → use real frame data
+### C1. Measurement hallucination → use real frame data — ✅ DONE (Sprint 1)
+
+> Implemented: real frame dimensions in tree output. Commit: `397f74f`.
 
 **Problem**: The vision model estimates sizes as screen-percentage then multiplies by assumed device dimensions ("approximately 22.5pt"). These numbers are often wrong — it mistakes text bounding boxes for hit areas, ignores iOS hit slop (extendedEdgeInsets), and produces "likely below 4.5:1" without ever computing a contrast ratio.
 
@@ -22,7 +24,9 @@
 
 ---
 
-### C2. Principle grounding is name-dropping, not analysis
+### C2. Principle grounding is name-dropping, not analysis — ✅ DONE (Sprint 1)
+
+> Implemented: cognitiveImpact field + GOOD/BAD examples. Commit: `c524072`.
 
 **Problem**: Issues cite "Nielsen:Consistency" or "Norman:Affordance" as labels but don't explain HOW the user's cognition fails. A real Norman analysis would describe the gulf of execution or evaluation; a real Nielsen analysis would explain which heuristic is violated and what the user experiences as a result.
 
@@ -36,7 +40,9 @@
 
 ---
 
-### C3. Scope pollution — agent leaves the target app
+### C3. Scope pollution — agent leaves the target app — ✅ DONE (Sprint 1)
+
+> Implemented: scope guard with app identifier check. Commits: `683eaef`, `755a743`.
 
 **Problem**: The Settings audit report contained Maps screens ("Save to My Guides", "喜好地點"). The agent tapped a link that left the app, and continued auditing whatever was in the foreground.
 
@@ -52,7 +58,9 @@
 
 ## High — Fix before dogfood round 2
 
-### H1. Dedup still leaks near-duplicates
+### H1. Dedup still leaks near-duplicates — ✅ DONE (Sprint 1)
+
+> Implemented: three-pass dedup (exact → fuzzy same-screen → cross-screen principle). Commits: `b57718f`, `76f977e`.
 
 **Problem**: Report-level dedup matches on `screenName + title` exactly. Safari ISSUE-001/002 ("Rearrange icon" vs "Reorder handle" — same element, different wording) and Settings ISSUE-004/005 both slipped through. The prompt says "don't re-report" but the model rephrases.
 
@@ -63,7 +71,9 @@
 
 **Estimated effort**: ~40 LOC.
 
-### H2. Anti-Apple bias — flagging standard platform patterns
+### H2. Anti-Apple bias — flagging standard platform patterns — ✅ DONE (Sprint 1)
+
+> Implemented: added anti-patterns for modal sheets, chrome, pull-to-refresh, back button labels, font specimens. Commits: `4cccd00`, `57d937f`.
 
 **Problem**: iOS modal sheets without an explicit "Done" button were flagged as Medium. Standard iOS navigation (swipe-to-dismiss, implicit sheet dismissal) is correct per HIG. The prompt's anti-pattern list covers tab bars and back buttons but not sheets.
 
@@ -73,7 +83,9 @@
 
 **Estimated effort**: ~5 LOC prompt update.
 
-### H3. Severity calibration is inconsistent
+### H3. Severity calibration is inconsistent — ✅ DONE (Sprint 1)
+
+> Implemented: explicit severity rubric with measurement thresholds. Commit: `b2cedf2`.
 
 **Problem**: A tap target 3.4pt below minimum was rated Low in Maps but a similar delta was Medium in Safari. No consistent severity rubric.
 
@@ -104,7 +116,9 @@ The vision model fundamentally cannot assess:
 - Dynamic Type: add a `--accessibility-pass` flag that restarts the audit with large text enabled and compares layouts.
 - VoiceOver: Phase 3 — requires a VoiceOver automation bridge that doesn't exist yet.
 
-### M2. Exploration efficiency
+### M2. Exploration efficiency — ⏳ PARTIAL (Sprint 1)
+
+> Partial fix: consecutive swipe escape (`d31ec6f`), specimen screen filter (`38115c2`). Remaining: subtree escape via app relaunch + step budget estimation — in progress.
 
 Agent gets stuck in loops (Maps "Add to List" cycle, Safari customization loop). The visited-screen fingerprint doesn't prevent re-entering the same flow from a different entry point.
 
@@ -132,20 +146,58 @@ Deprecation warnings are currently suppressed. When AI SDK ships the replacement
 
 ---
 
+## Post-dogfood fixes (Sprint 1)
+
+### P1. Font specimen false positives — ✅ DONE (Sprint 1, post-dogfood)
+
+**Problem**: Font preview screens flagged for thin font contrast. Anti-pattern rule overridden by HIG contrast rules.
+
+**Fix**: Triple-layer defense — prompt CONTEXT FILTER + BAD example + code-level `isSpecimenScreenIssue()` post-filter.
+
+**Commit**: `38115c2`
+
+### P3. Paginated content stuck loop — ✅ DONE (Sprint 1, post-dogfood)
+
+**Problem**: Agent wasted 18/25 steps swiping through font preview pages.
+
+**Fix**: Consecutive swipe counter (MAX=4) forces back navigation + STUCK message injection.
+
+**Commit**: `d31ec6f`
+
+### P4+P5. Subtree trap + step budget estimation — ⏳ IN PROGRESS
+
+**Problem**: Agent escapes paginated content but re-enters same subtree. No global exploration diversity signal. 25 steps insufficient for full app coverage with no visibility into budget adequacy.
+
+**Fix direction (Sprint 1 minimal)**:
+1. Stuck escape → relaunch app (not back) to return to root
+2. Pre-audit step estimation from home screen accessibility tree (zero LLM cost)
+
+**Sprint 2 backlog** (pending validation that relaunch fix is sufficient):
+- Overview mode (`--overview`) for section mapping
+- Deep dive auto mode (`--deep`) for sequential section audit
+- Deterministic replay navigation (nav steps vs audit steps separation)
+- `--snapshot` / `--setup` for state restoration across sessions
+- Coverage.json persistence + cross-session report merge
+
+---
+
 ## Priority matrix
 
-| ID | Severity | Effort | Impact on trust | Recommended sprint |
-|----|----------|--------|-----------------|-------------------|
-| C1 | Critical | ~150 LOC | Eliminates hallucinated measurements | Sprint 1 |
-| C2 | Critical | ~30 LOC | Transforms shallow labels into real analysis | Sprint 1 |
-| C3 | Critical | ~30 LOC | Prevents scope pollution | Sprint 1 |
-| H1 | High | ~40 LOC | Removes duplicate noise | Sprint 1 |
-| H2 | High | ~5 LOC | Stops flagging Apple's own patterns | Sprint 1 |
-| H3 | High | ~20 LOC | Makes severity ratings trustworthy | Sprint 1 |
-| M1 | Medium | varies | Covers blind spots incrementally | Sprint 2 |
-| M2 | Medium | ~50 LOC | Better exploration coverage | Sprint 2 |
-| L1 | Low | ~60 LOC | Nice-to-have precision | Sprint 2 |
-| L2 | Low | large | Phase 2 feature | Sprint 3 |
-| L3 | Low | medium | Tech debt | Sprint 3 |
+| ID | Severity | Effort | Impact on trust | Sprint | Status |
+|----|----------|--------|-----------------|--------|--------|
+| C1 | Critical | ~150 LOC | Eliminates hallucinated measurements | Sprint 1 | ✅ DONE |
+| C2 | Critical | ~30 LOC | Transforms shallow labels into real analysis | Sprint 1 | ✅ DONE |
+| C3 | Critical | ~30 LOC | Prevents scope pollution | Sprint 1 | ✅ DONE |
+| H1 | High | ~40 LOC | Removes duplicate noise | Sprint 1 | ✅ DONE |
+| H2 | High | ~5 LOC | Stops flagging Apple's own patterns | Sprint 1 | ✅ DONE |
+| H3 | High | ~20 LOC | Makes severity ratings trustworthy | Sprint 1 | ✅ DONE |
+| P1 | Post-dogfood | ~30 LOC | Eliminates font specimen false positives | Sprint 1 | ✅ DONE |
+| P3 | Post-dogfood | ~40 LOC | Breaks paginated content stuck loops | Sprint 1 | ✅ DONE |
+| P4+P5 | Post-dogfood | ~60 LOC | Subtree escape + step budget | Sprint 1 | ⏳ IN PROGRESS |
+| M1 | Medium | varies | Covers blind spots incrementally | Sprint 2 | |
+| M2 | Medium | ~50 LOC | Better exploration coverage | Sprint 1–2 | ⏳ PARTIAL |
+| L1 | Low | ~60 LOC | Nice-to-have precision | Sprint 2 | |
+| L2 | Low | large | Phase 2 feature | Sprint 3 | |
+| L3 | Low | medium | Tech debt | Sprint 3 | |
 
 **Sprint 1 total**: ~275 LOC across prompt, schema, executor, and dedup. High ROI — transforms the report from "automated noise + correct terminology" (2/10) to "useful first-pass screening tool" (target: 6-7/10).
