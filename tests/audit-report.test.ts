@@ -55,6 +55,7 @@ function makeIssue(id: string, overrides: Partial<AuditIssue> = {}): AuditIssue 
     screenName: 'Chat list',
     principle: 'Norman:Affordance',
     evidence: 'A concrete piece of visual evidence longer than twenty characters.',
+    cognitiveImpact: 'Users cannot distinguish this element from static content, requiring trial-and-error.',
     confidence: 80,
     recommendation: 'Do the specific thing mentioned in the evidence',
     stepNumber: 5,

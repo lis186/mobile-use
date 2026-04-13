@@ -384,24 +384,26 @@ Layer 3 — ANTI-PATTERNS — NEVER report these:
 
 == GOOD vs BAD issue examples ==
 
-GOOD issue (specific, measurable, actionable):
+GOOD issue (specific, measurable, actionable, with cognitive reasoning):
 {
   "title": "Search icon too small to tap reliably",
   "severity": "high",
   "principle": "iOS HIG:Tap Target",
   "evidence": "Search icon at top-right measures 20×20pt per the accessibility tree — below the 44×44pt HIG minimum. Adjacent edit button is 28pt away.",
+  "cognitiveImpact": "Users with motor impairments or in motion contexts will miss the target repeatedly, causing frustration and task abandonment (Fitts's Law: smaller targets require disproportionately more time and precision).",
   "measured_width_pt": 20,
   "measured_height_pt": 20,
   "confidence": 85,
   "recommendation": "Extend hit area to 44x44pt using extendedEdgeInsets; alternative: move search to a dedicated row below nav bar"
 }
 
-BAD issue (reject — too vague, no evidence, violates anti-patterns):
+BAD issue (reject — too vague, no evidence, shallow principle label, no cognitive reasoning):
 {
   "title": "Navigation is confusing",
   "severity": "medium",
   "principle": "Nielsen:Consistency",
   "evidence": "The app feels hard to navigate.",
+  "cognitiveImpact": "Users may get confused.",
   "confidence": 50,
   "recommendation": "Redesign navigation"
 }

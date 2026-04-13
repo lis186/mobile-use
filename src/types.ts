@@ -116,11 +116,9 @@ export interface AuditIssue {
   severity: 'high' | 'medium' | 'low';
   screenName: string;
   principle: string;        // e.g. "Norman:Affordance" or "Nielsen:Consistency"
-  cognitiveMechanism?: string; // causal reasoning: how the user's cognition fails
   persona?: string;         // e.g. "rushed" | "firsttime" | "power"
   evidence: string;         // concrete visual evidence, ≥20 chars
-  measured_width_pt?: number;  // actual width from accessibility tree frame
-  measured_height_pt?: number; // actual height from accessibility tree frame
+  cognitiveImpact: string;  // HOW the user's cognition fails
   confidence: number;       // 0-100 integer
   recommendation: string;
   stepNumber: number;

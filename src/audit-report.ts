@@ -57,18 +57,14 @@ export async function finalizeReport(
     readTimingsJsonSafe(path.join(outputDir, 'timings.json')),
   ]);
 
-  // Dedup: exact match (case-insensitive) + fuzzy Jaccard bigram similarity.
-  // If same screenName and title bigram similarity > 0.6, treat as duplicate.
-  const kept: AuditIssue[] = [];
-  for (const issue of rawIssues) {
-    const isDup = kept.some(
-      (existing) =>
-        existing.screenName.toLowerCase() === issue.screenName.toLowerCase() &&
-        jaccardBigram(existing.title, issue.title) > 0.6,
-    );
-    if (!isDup) kept.push(issue);
-  }
-  const issues = kept;
+  // Dedup: same screen + same title = same issue; keep the first occurrence.
+  const seen = new Set<string>();
+  const issues = rawIssues.filter((issue) => {
+    const key = `${issue.screenName}\0${issue.title}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 
   const summary = summarize(timings, ctx.model);
   const md = renderReport({ ctx, steps, issues, timings, summary });
@@ -159,26 +155,22 @@ function renderIssueSection(issue: AuditIssue, ctx: AuditReportContext): string 
   const severityIcon = severityEmoji(issue.severity);
   const annotatedPath = `annotated/${stepFileName(issue.stepNumber)}`;
   const personaLine = issue.persona ? `\n**Affected Persona**: ${escapeMd(issue.persona)}` : '';
-  const measureLine =
-    issue.measured_width_pt != null && issue.measured_height_pt != null
-      ? `\n**Measured Size**: ${issue.measured_width_pt} × ${issue.measured_height_pt} pt`
-      : '';
   const reauditCmd = buildReauditCommand(ctx.bundleId, issue.screenName);
 
   return `### ${issue.id} · ${severityIcon} ${capitalize(issue.severity)} · ${escapeMd(issue.title)}
 
 **Screen**: ${escapeMd(issue.screenName)}
-**Principle**: ${escapeMd(issue.principle)}${personaLine}${measureLine}
+**Principle**: ${escapeMd(issue.principle)}${personaLine}
 **Confidence**: ${issue.confidence}%
 **Step**: ${issue.stepNumber}
 
 ![Annotated screenshot](${annotatedPath})
 
-**Cognitive Impact**:
-${issue.cognitiveMechanism ? `> ${escapeQuote(issue.cognitiveMechanism)}` : '> (not provided)'}
-
 **Evidence** (what the AI observed):
 > ${escapeQuote(issue.evidence)}
+
+**Cognitive Impact**:
+> ${escapeQuote(issue.cognitiveImpact)}
 
 **Recommendation**:
 ${escapeMd(issue.recommendation)}
@@ -376,26 +368,6 @@ function escapeMd(s: string): string {
 /** Escape for use inside a blockquote — just collapse newlines. */
 function escapeQuote(s: string): string {
   return s.replace(/\r?\n/g, ' ').trim();
-}
-
-/** Compute Jaccard similarity on character bigrams of two strings. */
-function jaccardBigram(a: string, b: string): number {
-  const bigramsOf = (s: string): Set<string> => {
-    const lower = s.toLowerCase();
-    const set = new Set<string>();
-    for (let i = 0; i < lower.length - 1; i++) {
-      set.add(lower.slice(i, i + 2));
-    }
-    return set;
-  };
-  const setA = bigramsOf(a);
-  const setB = bigramsOf(b);
-  if (setA.size === 0 && setB.size === 0) return 1;
-  let intersection = 0;
-  for (const bg of setA) {
-    if (setB.has(bg)) intersection++;
-  }
-  return intersection / (setA.size + setB.size - intersection);
 }
 
 /** Read timings.json if present, returning the raw StepTiming[] for re-summarizing. */

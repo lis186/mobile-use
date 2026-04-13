@@ -29,7 +29,7 @@ import { AuditError, isAuditError, type AuditErrorCode } from './errors/audit-er
 import { WDAClient } from './wda.js';
 import { XCTestClient } from './xctest.js';
 import { fingerprintScreen } from './core/screen-fingerprint.js';
-import { extractNavTargets, extractRootAppId } from './core/tree-parser.js';
+import { extractNavTargets } from './core/tree-parser.js';
 import { appendStep, appendIssue } from './core/jsonl-writer.js';
 import { saveEvidence } from './core/evidence.js';
 import { annotateScreenshot, writeAnnotated, firstParamText } from './core/annotate.js';
@@ -261,22 +261,6 @@ export class AuditExecutor extends TaskExecutor {
         this.crashStreak = 0;
       }
 
-      // ── App-drift detection (C3) ───────────────────────────
-      if (tree) {
-        const foregroundApp = extractRootAppId(tree);
-        if (foregroundApp && foregroundApp !== this.auditConfig.bundleId) {
-          console.log(
-            pc.yellow(`  ⚠️  App drift: foreground is "${foregroundApp}", expected "${this.auditConfig.bundleId}" — navigating back`),
-          );
-          try {
-            await this.maestro.back();
-            await sleep(1000);
-          } catch { /* best-effort back */ }
-          this.recentActions.push(`drift:back(${foregroundApp})`);
-          continue; // skip this step — re-observe on next iteration
-        }
-      }
-
       // ── Decide ──────────────────────────────────────────────
       const decideSpin = ora({ text: 'AI analyzing screen...', stream: process.stdout }).start();
       let result: AuditStepResult;
@@ -343,11 +327,9 @@ export class AuditExecutor extends TaskExecutor {
               severity: issue.severity,
               screenName,
               principle: issue.principle,
-              cognitiveMechanism: issue.cognitiveMechanism,
               persona: issue.persona,
               evidence: issue.evidence,
-              measured_width_pt: issue.measured_width_pt,
-              measured_height_pt: issue.measured_height_pt,
+              cognitiveImpact: issue.cognitiveImpact,
               confidence: issue.confidence,
               recommendation: issue.recommendation,
               stepNumber: step,

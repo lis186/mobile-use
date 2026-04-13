@@ -35,6 +35,10 @@ export const auditIssueSchema = z.object({
     .min(0)
     .max(100)
     .describe('integer 0-100 percent; your confidence this is a real issue worth fixing'),
+  cognitiveImpact: z
+    .string()
+    .min(20)
+    .describe('explain HOW the user\'s cognition fails: what mental model breaks, what gulf of execution/evaluation exists, what the user experiences as friction — not just a principle label'),
   recommendation: z
     .string()
     .min(10)
