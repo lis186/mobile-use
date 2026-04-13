@@ -212,6 +212,35 @@ function walkXCTestNode(
   }
 }
 
+/**
+ * Extract the root Application bundle identifier from a raw tree string.
+ * XCTest trees: JSON with axElement.identifier
+ * WDA trees: XML with XCUIElementTypeApplication name="..."
+ * Returns null if the tree format is unrecognised or has no app identifier.
+ */
+export function extractRootAppId(raw: string): string | null {
+  if (!raw || raw.trim().length < 5) return null;
+
+  // XCTest JSON path
+  if (!raw.trimStart().startsWith('<')) {
+    try {
+      const json = JSON.parse(raw) as { axElement?: { elementType?: number; identifier?: string } };
+      if (json.axElement?.elementType === 2 && json.axElement.identifier) {
+        return json.axElement.identifier;
+      }
+    } catch { /* not JSON */ }
+  }
+
+  // WDA XML path — Application element's name attribute is the bundle ID
+  const appMatch = raw.match(/<XCUIElementTypeApplication\s+([^>]*)>/);
+  if (appMatch) {
+    const nameMatch = appMatch[1]!.match(/\bname="([^"]*)"/);
+    if (nameMatch) return nameMatch[1]!;
+  }
+
+  return null;
+}
+
 // ── Audit-mode helpers ───────────────────────────────────────────
 
 /** Rich detail from a parsed tree: text + grade + count for audit-mode use. */

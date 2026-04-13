@@ -29,7 +29,7 @@ import { AuditError, isAuditError, type AuditErrorCode } from './errors/audit-er
 import { WDAClient } from './wda.js';
 import { XCTestClient } from './xctest.js';
 import { fingerprintScreen } from './core/screen-fingerprint.js';
-import { extractNavTargets } from './core/tree-parser.js';
+import { extractNavTargets, extractRootAppId } from './core/tree-parser.js';
 import { appendStep, appendIssue } from './core/jsonl-writer.js';
 import { saveEvidence } from './core/evidence.js';
 import { annotateScreenshot, writeAnnotated, firstParamText } from './core/annotate.js';
@@ -259,6 +259,22 @@ export class AuditExecutor extends TaskExecutor {
         }
       } else {
         this.crashStreak = 0;
+      }
+
+      // ── App-drift detection (C3) ───────────────────────────
+      if (tree) {
+        const foregroundApp = extractRootAppId(tree);
+        if (foregroundApp && foregroundApp !== this.auditConfig.bundleId) {
+          console.log(
+            pc.yellow(`  ⚠️  App drift: foreground is "${foregroundApp}", expected "${this.auditConfig.bundleId}" — navigating back`),
+          );
+          try {
+            await this.maestro.back();
+            await sleep(1000);
+          } catch { /* best-effort back */ }
+          this.recentActions.push(`drift:back(${foregroundApp})`);
+          continue; // skip this step — re-observe on next iteration
+        }
       }
 
       // ── Decide ──────────────────────────────────────────────
