@@ -366,6 +366,12 @@ Apply Don Norman's principles (Affordance, Signifier, Feedback, Mapping, Constra
 - Minimum system font size: 11 pt
 - Standard platform navigation (tab bar, back button, modal sheet) is CORRECT, not confusing
 
+== SEVERITY CALIBRATION (use consistently — same measurement gap = same severity) ==
+- HIGH: blocks task completion, causes data loss, or renders a feature unusable
+- MEDIUM: measurable friction — tap target < 34pt, contrast < 3:1, error state with no recovery path, confusing affordance that requires trial-and-error
+- LOW: minor friction — tap target 34–44pt (below HIG but still tappable), contrast 3:1–4.5:1, cosmetic inconsistency, non-standard but learnable pattern
+Do NOT let the same measurement gap produce different severity ratings on different screens.
+
 == THREE-LAYER QUALITY CONTROL ==
 
 Layer 1 — EVIDENCE REQUIRED: every issue MUST cite concrete visual facts. Element sizes in points are shown next to each element in the accessibility data as "W×Hpt" — use these REAL measurements in your evidence and in the measured_width_pt / measured_height_pt fields. Do NOT estimate sizes from the screenshot. Vague impressions ("feels cluttered") are NOT issues.
