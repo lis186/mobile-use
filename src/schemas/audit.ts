@@ -29,6 +29,18 @@ export const auditIssueSchema = z.object({
     .string()
     .min(20)
     .describe('concrete visual evidence you observed, ≥ 20 chars; must cite specific pixels/colors/sizes/positions, not vague impressions'),
+  measured_width_pt: z
+    .number()
+    .int()
+    .min(0)
+    .optional()
+    .describe('actual width in points from the accessibility tree frame data; omit only when no frame data is available'),
+  measured_height_pt: z
+    .number()
+    .int()
+    .min(0)
+    .optional()
+    .describe('actual height in points from the accessibility tree frame data; omit only when no frame data is available'),
   confidence: z
     .number()
     .int()

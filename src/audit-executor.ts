@@ -329,6 +329,8 @@ export class AuditExecutor extends TaskExecutor {
               principle: issue.principle,
               persona: issue.persona,
               evidence: issue.evidence,
+              measured_width_pt: issue.measured_width_pt,
+              measured_height_pt: issue.measured_height_pt,
               confidence: issue.confidence,
               recommendation: issue.recommendation,
               stepNumber: step,

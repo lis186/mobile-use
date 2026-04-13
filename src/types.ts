@@ -118,6 +118,8 @@ export interface AuditIssue {
   principle: string;        // e.g. "Norman:Affordance" or "Nielsen:Consistency"
   persona?: string;         // e.g. "rushed" | "firsttime" | "power"
   evidence: string;         // concrete visual evidence, ≥20 chars
+  measured_width_pt?: number;  // actual width from accessibility tree frame
+  measured_height_pt?: number; // actual height from accessibility tree frame
   confidence: number;       // 0-100 integer
   recommendation: string;
   stepNumber: number;

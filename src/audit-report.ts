@@ -155,12 +155,16 @@ function renderIssueSection(issue: AuditIssue, ctx: AuditReportContext): string 
   const severityIcon = severityEmoji(issue.severity);
   const annotatedPath = `annotated/${stepFileName(issue.stepNumber)}`;
   const personaLine = issue.persona ? `\n**Affected Persona**: ${escapeMd(issue.persona)}` : '';
+  const measureLine =
+    issue.measured_width_pt != null && issue.measured_height_pt != null
+      ? `\n**Measured Size**: ${issue.measured_width_pt} × ${issue.measured_height_pt} pt`
+      : '';
   const reauditCmd = buildReauditCommand(ctx.bundleId, issue.screenName);
 
   return `### ${issue.id} · ${severityIcon} ${capitalize(issue.severity)} · ${escapeMd(issue.title)}
 
 **Screen**: ${escapeMd(issue.screenName)}
-**Principle**: ${escapeMd(issue.principle)}${personaLine}
+**Principle**: ${escapeMd(issue.principle)}${personaLine}${measureLine}
 **Confidence**: ${issue.confidence}%
 **Step**: ${issue.stepNumber}
 

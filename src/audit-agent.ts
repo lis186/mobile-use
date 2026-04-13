@@ -368,7 +368,7 @@ Apply Don Norman's principles (Affordance, Signifier, Feedback, Mapping, Constra
 
 == THREE-LAYER QUALITY CONTROL ==
 
-Layer 1 — EVIDENCE REQUIRED: every issue MUST cite concrete visual facts (element sizes in points, specific positions, measured colors/contrast). Vague impressions ("feels cluttered") are NOT issues.
+Layer 1 — EVIDENCE REQUIRED: every issue MUST cite concrete visual facts from the accessibility tree data above. Each element line includes actual dimensions (e.g. "44×44pt"). Use ONLY these real measurements — NEVER estimate or guess sizes. If the tree provides "28×28pt" for a button, cite that exact number. Vague impressions ("feels cluttered") or made-up measurements ("approximately 22.5pt") are NOT acceptable.
 
 Layer 2 — COMPARATIVE ANCHORING: compare against iOS HIG numbers above. Don't flag issues that meet the standard.
 
@@ -389,7 +389,9 @@ GOOD issue (specific, measurable, actionable):
   "title": "Search icon too small to tap reliably",
   "severity": "high",
   "principle": "iOS HIG:Tap Target",
-  "evidence": "Search icon at top-right is approximately 20x20pt with 4pt padding; below the 44x44pt minimum. Adjacent edit button is 28pt away.",
+  "evidence": "Search icon (tree: 20×20pt) is below the 44×44pt minimum. Adjacent edit button is 28pt away.",
+  "measured_width_pt": 20,
+  "measured_height_pt": 20,
   "confidence": 85,
   "recommendation": "Extend hit area to 44x44pt using extendedEdgeInsets; alternative: move search to a dedicated row below nav bar"
 }

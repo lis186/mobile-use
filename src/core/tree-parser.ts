@@ -79,7 +79,7 @@ export function parseWDATree(xml: string): string {
       const pctX2 = Math.round(((px + pw) / screenW) * 100);
       const pctY2 = Math.round(((py + ph) / screenH) * 100);
 
-      lines.push(`[${shortType}] "${label}" (${pctX},${pctY} - ${pctX2},${pctY2})`);
+      lines.push(`[${shortType}] "${label}" (${pctX},${pctY} - ${pctX2},${pctY2}) ${pw}×${ph}pt`);
     } else {
       lines.push(`[${shortType}] "${label}"`);
     }
@@ -196,7 +196,9 @@ function walkXCTestNode(
         const pctY = Math.round((f.Y / screenH) * 100);
         const pctX2 = Math.round(((f.X + f.Width) / screenW) * 100);
         const pctY2 = Math.round(((f.Y + f.Height) / screenH) * 100);
-        lines.push(`[${typeName}] "${label}" (${pctX},${pctY} - ${pctX2},${pctY2})`);
+        const wPt = Math.round(f.Width);
+        const hPt = Math.round(f.Height);
+        lines.push(`[${typeName}] "${label}" (${pctX},${pctY} - ${pctX2},${pctY2}) ${wPt}×${hPt}pt`);
       }
     } else {
       lines.push(`[${typeName}] "${label}"`);
