@@ -29,7 +29,7 @@ import { AuditError, isAuditError, type AuditErrorCode } from './errors/audit-er
 import { WDAClient } from './wda.js';
 import { XCTestClient } from './xctest.js';
 import { fingerprintScreen } from './core/screen-fingerprint.js';
-import { extractNavTargets } from './core/tree-parser.js';
+import { extractNavTargets, extractRootAppId } from './core/tree-parser.js';
 import { appendStep, appendIssue } from './core/jsonl-writer.js';
 import { saveEvidence } from './core/evidence.js';
 import { annotateScreenshot, writeAnnotated, firstParamText } from './core/annotate.js';
@@ -58,6 +58,8 @@ const NAVIGATION_ACTIONS = new Set<string>([
 const MAX_SCREENSHOT_RETRIES = 3;
 const STABLE_POLL_INTERVAL_MS = 250;
 const LOCK_DIR = '/tmp';
+const MAX_CONSECUTIVE_SWIPES = 4;
+const MAX_OVEREXPLORED_VISITS = 4;
 
 export type AuditPartialReason = AuditErrorCode | 'E_UNEXPECTED';
 
@@ -75,6 +77,7 @@ export class AuditExecutor extends TaskExecutor {
   private readonly visited = new Map<string, VisitedScreen>();
   private unvisitedTargets: string[] = [];
   private readonly recentActions: string[] = [];
+  private consecutiveSwipes = 0;
   private readonly timings: StepTiming[] = [];
   private issueCounter = 0;
   private lockPath: string | null = null;
@@ -84,6 +87,12 @@ export class AuditExecutor extends TaskExecutor {
   private startedAt: Date = new Date();
   private cancelRequested = false;
   private auditLiveViewer: LiveViewer | null = null;
+  private expectedAppLabel: string | null = null;
+  // Per-fingerprint relaunch tracking: each overexplored fingerprint gets exactly one
+  // relaunch attempt. Using a Set instead of a global counter prevents a single screen
+  // with multiple fingerprints (different scroll states) from exhausting the budget
+  // before other stuck screens can escape.
+  private readonly relaunched = new Set<string>();
 
   constructor(config: AuditConfig, apiKey: string, provider: 'google' | 'openai' = 'google') {
     // Build a stub TaskConfig for the parent's driver setup. The parent will
@@ -261,6 +270,36 @@ export class AuditExecutor extends TaskExecutor {
         this.crashStreak = 0;
       }
 
+      // ── Scope guard — detect cross-app drift ───────────────
+      // XCTest's /viewHierarchy filters by appIds — if the target app isn't
+      // in the foreground, the tree comes back empty (caught by detectAppCrash).
+      // WDA returns the full tree regardless of which app is in front, so we
+      // need an explicit check. extractRootAppId returns the display name
+      // (e.g. "Settings"), not the bundle ID, so we store the expected display
+      // name from the first non-empty tree and compare against that.
+      if (tree && this.auditConfig.runner === 'wda') {
+        const treeAppId = extractRootAppId(tree);
+        if (treeAppId) {
+          if (!this.expectedAppLabel) {
+            // First successful tree — record the display name as baseline
+            this.expectedAppLabel = treeAppId;
+          } else if (treeAppId !== this.expectedAppLabel) {
+            console.log(
+              pc.yellow(`  ⚠️  Scope drift: in "${treeAppId}", expected "${this.expectedAppLabel}" — going back`),
+            );
+            try {
+              await this.executeAction({ action: 'back', params: {}, reasoning: 'scope guard', progress: 0 });
+            } catch {
+              try {
+                await this.executeAction({ action: 'launchApp', params: { appId: this.auditConfig.bundleId }, reasoning: 'scope guard relaunch', progress: 0 });
+              } catch { /* best effort */ }
+            }
+            this.recentActions.push('back (scope guard)');
+            continue;
+          }
+        }
+      }
+
       // ── Decide ──────────────────────────────────────────────
       const decideSpin = ora({ text: 'AI analyzing screen...', stream: process.stdout }).start();
       let result: AuditStepResult;
@@ -294,6 +333,20 @@ export class AuditExecutor extends TaskExecutor {
       if (result.parsedTree && result.parsedTree.grade === 'rich') {
         const targets = extractNavTargets(result.parsedTree.text);
         this.refreshUnvisitedTargets(targets);
+
+        // ── P5: Step budget estimation (step 1 only) ──────────
+        if (step === 1 && this.unvisitedTargets.length > 0) {
+          const sectionCount = this.unvisitedTargets.length;
+          const estimatedSteps = sectionCount * 3;
+          const pct = Math.min(100, Math.round((this.auditConfig.maxSteps / estimatedSteps) * 100));
+          console.log(pc.cyan(`\n  📊 Coverage estimate: ${sectionCount} sections × 3 steps ≈ ${estimatedSteps} steps needed`));
+          console.log(pc.cyan(`     With --max-steps ${this.auditConfig.maxSteps}: ~${pct}% coverage`));
+          if (pct < 60) {
+            console.log(pc.yellow(`     ⚠️  Consider --max-steps ${estimatedSteps} for full coverage`));
+          }
+        }
+      } else if (step === 1 && result.parsedTree) {
+        console.log(pc.cyan(`\n  📊 Coverage estimate: uncertain (${result.parsedTree.grade} accessibility tree)`));
       }
 
       // ── Log decision to console ─────────────────────────────
@@ -302,16 +355,20 @@ export class AuditExecutor extends TaskExecutor {
         pc.green(`  🎬 Action: ${result.navigation.action}`) +
           pc.dim(` ${JSON.stringify(result.navigation.params ?? {})}`),
       );
-      if (result.audit?.issues.length) {
-        console.log(
-          pc.yellow(`  🔍 Issues found on this screen: ${result.audit.issues.length}`),
-        );
-      }
-
       // ── Collect + persist issues in parallel ────────────────
       let persistedIssues: AuditIssue[] = [];
-      if (result.audit?.issues?.length) {
-        const withIds = result.audit.issues.map((issue) => {
+      const filteredIssues = result.audit?.issues?.filter(
+        (issue) => !isSpecimenScreenIssue(screenName, issue),
+      );
+      const dropped = (result.audit?.issues?.length ?? 0) - (filteredIssues?.length ?? 0);
+      if (filteredIssues?.length || dropped) {
+        const parts: string[] = [];
+        if (filteredIssues?.length) parts.push(`${filteredIssues.length} issues`);
+        if (dropped) parts.push(`${dropped} specimen-screen filtered`);
+        console.log(pc.yellow(`  🔍 ${parts.join(', ')}`));
+      }
+      if (filteredIssues?.length) {
+        const withIds = filteredIssues.map((issue) => {
           this.issueCounter++;
           return {
             issue,
@@ -329,6 +386,7 @@ export class AuditExecutor extends TaskExecutor {
               principle: issue.principle,
               persona: issue.persona,
               evidence: issue.evidence,
+              cognitiveImpact: issue.cognitiveImpact,
               confidence: issue.confidence,
               recommendation: issue.recommendation,
               stepNumber: step,
@@ -385,14 +443,61 @@ export class AuditExecutor extends TaskExecutor {
         throw new AuditError('E_APP_CRASHED', `Agent gave up: ${result.reasoning}`);
       }
 
+      // ── P4: Overexplored screen → escalate to relaunch ──────
+      // If the same fingerprint has been seen ≥ MAX_OVEREXPLORED_VISITS times,
+      // back() alone won't escape the subtree. Relaunch the app to return to
+      // the home state and resume exploration from a clean starting point.
+      // The visited map is preserved so already-explored screens are not revisited.
+      const visitCount = this.visited.get(fingerprint)?.count ?? 1;
+      if (visitCount >= MAX_OVEREXPLORED_VISITS && !this.relaunched.has(fingerprint)) {
+        this.relaunched.add(fingerprint);
+        console.log(
+          pc.yellow(
+            `  ⚠️  Stuck: screen seen ${visitCount}× — relaunching app`,
+          ),
+        );
+        try {
+          await this.executeAction({
+            action: 'launchApp',
+            params: { appId: this.auditConfig.bundleId },
+            reasoning: `stuck escape: screen seen ${visitCount} times`,
+            progress: 0,
+          });
+          await this.waitForScreenStable(this.auditConfig.stableTimeout, STABLE_POLL_INTERVAL_MS);
+        } catch (err) {
+          console.log(pc.yellow(`  ⚠️  Relaunch failed: ${(err as Error).message}`));
+        }
+        this.recentActions.push(
+          `STUCK: relaunched app after same screen seen ${visitCount}× — resuming exploration from home`,
+        );
+        this.consecutiveSwipes = 0;
+        continue;
+      }
+
       // ── Execute the action ──────────────────────────────────
       const t3 = performance.now();
+      const isSwipe = result.navigation.action === 'swipe' || result.navigation.action === 'scroll';
       try {
         await this.executeAction(result.navigation);
         this.recentActions.push(this.formatAction(result.navigation));
       } catch (err) {
         console.log(pc.yellow(`  ⚠️  action failed: ${(err as Error).message}`));
         this.recentActions.push('error');
+      }
+
+      // ── Stuck detection: escape paginated content ──────────
+      if (isSwipe) {
+        this.consecutiveSwipes++;
+        if (this.consecutiveSwipes >= MAX_CONSECUTIVE_SWIPES) {
+          console.log(pc.yellow(`  ⚠️  Stuck: ${this.consecutiveSwipes} consecutive swipes — forcing back`));
+          try {
+            await this.executeAction({ action: 'back', params: {}, reasoning: 'stuck escape', progress: 0 });
+          } catch { /* best effort */ }
+          this.recentActions.push(`STUCK: forced back after ${this.consecutiveSwipes} consecutive swipes in paginated content — explore a different section`);
+          this.consecutiveSwipes = 0;
+        }
+      } else {
+        this.consecutiveSwipes = 0;
       }
       const t4 = performance.now();
 
@@ -742,6 +847,19 @@ function isProcessAlive(pid: number): boolean {
     // EPERM means the process exists but we can't signal it — still alive.
     return (err as NodeJS.ErrnoException).code === 'EPERM';
   }
+}
+
+const SPECIMEN_SCREEN_PATTERN = /font|字體|typeface|字型|specimen|preview.*font|font.*preview/i;
+const SPECIMEN_PRINCIPLE_PATTERN = /contrast|readability|legibility/i;
+
+/** Code-level safety net: drop contrast/readability issues on font specimen screens. */
+function isSpecimenScreenIssue(
+  screenName: string,
+  issue: { title: string; principle: string },
+): boolean {
+  if (!SPECIMEN_SCREEN_PATTERN.test(screenName)) return false;
+  return SPECIMEN_PRINCIPLE_PATTERN.test(issue.principle) ||
+    SPECIMEN_PRINCIPLE_PATTERN.test(issue.title);
 }
 
 

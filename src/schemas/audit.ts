@@ -35,10 +35,22 @@ export const auditIssueSchema = z.object({
     .min(0)
     .max(100)
     .describe('integer 0-100 percent; your confidence this is a real issue worth fixing'),
+  cognitiveImpact: z
+    .string()
+    .min(20)
+    .describe('explain HOW the user\'s cognition fails: what mental model breaks, what gulf of execution/evaluation exists, what the user experiences as friction — not just a principle label'),
   recommendation: z
     .string()
     .min(10)
     .describe('specific actionable fix a developer can implement'),
+  measured_width_pt: z
+    .number()
+    .optional()
+    .describe('actual width in points from accessibility tree frame data; include when citing a tap target size issue'),
+  measured_height_pt: z
+    .number()
+    .optional()
+    .describe('actual height in points from accessibility tree frame data; include when citing a tap target size issue'),
 });
 
 export const auditBlockSchema = z.object({
