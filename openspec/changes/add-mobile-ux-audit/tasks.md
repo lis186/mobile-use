@@ -203,4 +203,4 @@
 - [x] S1.P3 Paginated content stuck: consecutive swipe escape (MAX_CONSECUTIVE_SWIPES=4)
 - [x] S1.P4 Subtree escape: stuck escape → relaunch app instead of back
 - [x] S1.P5 Step budget estimation: parse home screen tree, count sections, display coverage estimate
-- [ ] S1.V1 Final dogfood verification: clean simulator, 25-step Settings audit
+- [x] S1.V1 Final dogfood verification: clean simulator, 25-step Settings audit

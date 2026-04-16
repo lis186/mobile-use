@@ -611,9 +611,9 @@ Use this after any group is finished. The `openspec status --change "add-mobile-
 
 | ID | Fix | Status |
 |----|-----|--------|
-| P4 | Stuck escape → relaunch app | ✅ Implemented |
-| P5 | Pre-audit step budget estimation | ✅ Implemented |
-| V1 | Final dogfood verification | Ready to run |
+| P4 | Stuck escape → relaunch app | ✅ Done |
+| P5 | Pre-audit step budget estimation | ✅ Done |
+| V1 | Final dogfood verification | ✅ Done — 14 screens, 2 issues, 0 FP |
 
 ### Dogfood Results
 
