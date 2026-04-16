@@ -391,10 +391,12 @@ function jaccardSimilarity(a: Set<string>, b: Set<string>): number {
 const JACCARD_THRESHOLD = 0.5;
 
 /**
- * Three-pass dedup:
+ * Four-pass dedup:
  * 1. Exact match on screenName + title (case-insensitive)
- * 2. Fuzzy title match within same screen (Jaccard > 0.5)
- * 3. Cross-screen principle dedup: same principle + similar title OR similar evidence
+ * 2. Same screen + same principle → keep only the first (highest-confidence) instance.
+ *    Catches bilingual paraphrases where Jaccard fails ("Learn More" vs "進一步瞭解").
+ * 3. Fuzzy title match within same screen (Jaccard > 0.5)
+ * 4. Cross-screen principle dedup: same principle + similar title OR similar evidence
  *    catches the case where the AI gives different screen names to the same screen
  *    (e.g. "蘋方-簡 > 極細體 (Page 2)" vs "Font example page 2 (極細體)")
  */
@@ -408,9 +410,18 @@ function deduplicateIssues(raw: AuditIssue[]): AuditIssue[] {
     return true;
   });
 
-  // Pass 2: fuzzy within same screen
+  // Pass 2: same screen + same principle → keep only first (bilingual paraphrase guard)
+  const seenScreenPrinciple = new Set<string>();
+  const afterScreenPrinciple = afterExact.filter((issue) => {
+    const key = `${issue.screenName.toLowerCase()}\0${issue.principle.toLowerCase()}`;
+    if (seenScreenPrinciple.has(key)) return false;
+    seenScreenPrinciple.add(key);
+    return true;
+  });
+
+  // Pass 3: fuzzy within same screen
   const afterFuzzy: AuditIssue[] = [];
-  for (const issue of afterExact) {
+  for (const issue of afterScreenPrinciple) {
     const screen = issue.screenName.toLowerCase();
     const bigrams = titleBigrams(issue.title);
     const isDup = afterFuzzy.some((existing) => {

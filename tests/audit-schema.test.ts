@@ -54,6 +54,7 @@ test('issue: accepts fully-formed issue with all required fields', () => {
     principle: 'iOS HIG:Tap Target',
     evidence: 'The search icon is approximately 20x20pt at top-right of the navigation bar.',
     confidence: 85,
+    cognitiveImpact: 'Users with motor impairments will miss the target and feel frustrated.',
     recommendation: 'Increase hit area to minimum 44x44pt using extendedEdgeInsets',
   });
   assert.ok(parsed.success);

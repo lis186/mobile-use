@@ -60,7 +60,6 @@ const STABLE_POLL_INTERVAL_MS = 250;
 const LOCK_DIR = '/tmp';
 const MAX_CONSECUTIVE_SWIPES = 4;
 const MAX_OVEREXPLORED_VISITS = 4;
-const MAX_RELAUNCH_ATTEMPTS = 2;
 
 export type AuditPartialReason = AuditErrorCode | 'E_UNEXPECTED';
 
@@ -89,7 +88,11 @@ export class AuditExecutor extends TaskExecutor {
   private cancelRequested = false;
   private auditLiveViewer: LiveViewer | null = null;
   private expectedAppLabel: string | null = null;
-  private relaunchCount = 0;
+  // Per-fingerprint relaunch tracking: each overexplored fingerprint gets exactly one
+  // relaunch attempt. Using a Set instead of a global counter prevents a single screen
+  // with multiple fingerprints (different scroll states) from exhausting the budget
+  // before other stuck screens can escape.
+  private readonly relaunched = new Set<string>();
 
   constructor(config: AuditConfig, apiKey: string, provider: 'google' | 'openai' = 'google') {
     // Build a stub TaskConfig for the parent's driver setup. The parent will
@@ -446,11 +449,11 @@ export class AuditExecutor extends TaskExecutor {
       // the home state and resume exploration from a clean starting point.
       // The visited map is preserved so already-explored screens are not revisited.
       const visitCount = this.visited.get(fingerprint)?.count ?? 1;
-      if (visitCount >= MAX_OVEREXPLORED_VISITS && this.relaunchCount < MAX_RELAUNCH_ATTEMPTS) {
-        this.relaunchCount++;
+      if (visitCount >= MAX_OVEREXPLORED_VISITS && !this.relaunched.has(fingerprint)) {
+        this.relaunched.add(fingerprint);
         console.log(
           pc.yellow(
-            `  ⚠️  Stuck: screen seen ${visitCount}× — relaunching app (attempt ${this.relaunchCount}/${MAX_RELAUNCH_ATTEMPTS})`,
+            `  ⚠️  Stuck: screen seen ${visitCount}× — relaunching app`,
           ),
         );
         try {
