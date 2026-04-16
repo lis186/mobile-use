@@ -59,6 +59,8 @@ const MAX_SCREENSHOT_RETRIES = 3;
 const STABLE_POLL_INTERVAL_MS = 250;
 const LOCK_DIR = '/tmp';
 const MAX_CONSECUTIVE_SWIPES = 4;
+const MAX_OVEREXPLORED_VISITS = 4;
+const MAX_RELAUNCH_ATTEMPTS = 2;
 
 export type AuditPartialReason = AuditErrorCode | 'E_UNEXPECTED';
 
@@ -87,6 +89,7 @@ export class AuditExecutor extends TaskExecutor {
   private cancelRequested = false;
   private auditLiveViewer: LiveViewer | null = null;
   private expectedAppLabel: string | null = null;
+  private relaunchCount = 0;
 
   constructor(config: AuditConfig, apiKey: string, provider: 'google' | 'openai' = 'google') {
     // Build a stub TaskConfig for the parent's driver setup. The parent will
@@ -327,6 +330,20 @@ export class AuditExecutor extends TaskExecutor {
       if (result.parsedTree && result.parsedTree.grade === 'rich') {
         const targets = extractNavTargets(result.parsedTree.text);
         this.refreshUnvisitedTargets(targets);
+
+        // ── P5: Step budget estimation (step 1 only) ──────────
+        if (step === 1 && this.unvisitedTargets.length > 0) {
+          const sectionCount = this.unvisitedTargets.length;
+          const estimatedSteps = sectionCount * 3;
+          const pct = Math.min(100, Math.round((this.auditConfig.maxSteps / estimatedSteps) * 100));
+          console.log(pc.cyan(`\n  📊 Coverage estimate: ${sectionCount} sections × 3 steps ≈ ${estimatedSteps} steps needed`));
+          console.log(pc.cyan(`     With --max-steps ${this.auditConfig.maxSteps}: ~${pct}% coverage`));
+          if (pct < 60) {
+            console.log(pc.yellow(`     ⚠️  Consider --max-steps ${estimatedSteps} for full coverage`));
+          }
+        }
+      } else if (step === 1 && result.parsedTree) {
+        console.log(pc.cyan(`\n  📊 Coverage estimate: uncertain (${result.parsedTree.grade} accessibility tree)`));
       }
 
       // ── Log decision to console ─────────────────────────────
@@ -421,6 +438,37 @@ export class AuditExecutor extends TaskExecutor {
       }
       if (result.navigation.action === 'failed') {
         throw new AuditError('E_APP_CRASHED', `Agent gave up: ${result.reasoning}`);
+      }
+
+      // ── P4: Overexplored screen → escalate to relaunch ──────
+      // If the same fingerprint has been seen ≥ MAX_OVEREXPLORED_VISITS times,
+      // back() alone won't escape the subtree. Relaunch the app to return to
+      // the home state and resume exploration from a clean starting point.
+      // The visited map is preserved so already-explored screens are not revisited.
+      const visitCount = this.visited.get(fingerprint)?.count ?? 1;
+      if (visitCount >= MAX_OVEREXPLORED_VISITS && this.relaunchCount < MAX_RELAUNCH_ATTEMPTS) {
+        this.relaunchCount++;
+        console.log(
+          pc.yellow(
+            `  ⚠️  Stuck: screen seen ${visitCount}× — relaunching app (attempt ${this.relaunchCount}/${MAX_RELAUNCH_ATTEMPTS})`,
+          ),
+        );
+        try {
+          await this.executeAction({
+            action: 'launchApp',
+            params: { appId: this.auditConfig.bundleId },
+            reasoning: `stuck escape: screen seen ${visitCount} times`,
+            progress: 0,
+          });
+          await this.waitForScreenStable(this.auditConfig.stableTimeout, STABLE_POLL_INTERVAL_MS);
+        } catch (err) {
+          console.log(pc.yellow(`  ⚠️  Relaunch failed: ${(err as Error).message}`));
+        }
+        this.recentActions.push(
+          `STUCK: relaunched app after same screen seen ${visitCount}× — resuming exploration from home`,
+        );
+        this.consecutiveSwipes = 0;
+        continue;
       }
 
       // ── Execute the action ──────────────────────────────────

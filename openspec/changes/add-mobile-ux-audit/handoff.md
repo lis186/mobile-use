@@ -9,10 +9,10 @@
 
 - **Branch**: `phase2-sprint1` (based on `main` which contains merged Phase 1)
 - **Progress**: **Phase 1 merged to main.** Sprint 1 (Phase 2) focuses on report quality fixes — from 2/10 → 6-7/10.
-- **Status**: Sprint 1 C1-C3, H1-H3, P1, P3 all committed. P4+P5 (subtree escape + step estimation) in progress.
+- **Status**: Sprint 1 C1-C3, H1-H3, P1, P3, P4, P5 all implemented. V1 dogfood ready to run.
 - **Last commit**: `d31ec6f fix(audit): P3 — escape heuristic for paginated content stuck loops`
 - **Working tree**: clean (ignore local `audit-output/` dir if present)
-- **Next obvious step**: implement P4 (relaunch escape) + P5 (step budget estimation), then final dogfood verification.
+- **Next obvious step**: run V1 dogfood verification (25-step Settings audit on clean simulator).
 
 ---
 
@@ -611,9 +611,9 @@ Use this after any group is finished. The `openspec status --change "add-mobile-
 
 | ID | Fix | Status |
 |----|-----|--------|
-| P4 | Stuck escape → relaunch app | Designed, not yet implemented |
-| P5 | Pre-audit step budget estimation | Designed, not yet implemented |
-| V1 | Final dogfood verification | Blocked on P4+P5 |
+| P4 | Stuck escape → relaunch app | ✅ Implemented |
+| P5 | Pre-audit step budget estimation | ✅ Implemented |
+| V1 | Final dogfood verification | Ready to run |
 
 ### Dogfood Results
 
