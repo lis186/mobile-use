@@ -118,7 +118,7 @@ The vision model fundamentally cannot assess:
 
 ### M2. Exploration efficiency — ⏳ PARTIAL (Sprint 1)
 
-> Partial fix: consecutive swipe escape (`d31ec6f`), specimen screen filter (`38115c2`). Remaining: subtree escape via app relaunch + step budget estimation — in progress.
+> Partial fix: consecutive swipe escape (`d31ec6f`), specimen screen filter (`38115c2`), subtree relaunch escalation + step budget estimation (`c579c0b`). Remaining: flow-level dedup (track 3-step sequence patterns) — Sprint 2.
 
 Agent gets stuck in loops (Maps "Add to List" cycle, Safari customization loop). The visited-screen fingerprint doesn't prevent re-entering the same flow from a different entry point.
 
@@ -164,13 +164,23 @@ Deprecation warnings are currently suppressed. When AI SDK ships the replacement
 
 **Commit**: `d31ec6f`
 
-### P4+P5. Subtree trap + step budget estimation — ⏳ IN PROGRESS
+### P4+P5. Subtree trap + step budget estimation — ✅ DONE (Sprint 1, post-dogfood)
+
+> Implemented: per-fingerprint relaunch escalation (P4) + home-screen coverage estimate (P5). Commit: `c579c0b`.
 
 **Problem**: Agent escapes paginated content but re-enters same subtree. No global exploration diversity signal. 25 steps insufficient for full app coverage with no visibility into budget adequacy.
 
-**Fix direction (Sprint 1 minimal)**:
-1. Stuck escape → relaunch app (not back) to return to root
-2. Pre-audit step estimation from home screen accessibility tree (zero LLM cost)
+**Fix (P4 — Stuck Escape with Relaunch Escalation)**:
+- `MAX_OVEREXPLORED_VISITS = 4`: when the same fingerprint is seen ≥ 4 times, back() alone can't escape the subtree.
+- `relaunched: Set<string>`: each fingerprint gets exactly one relaunch attempt. Prevents multi-screen subtrees from exhausting the escape budget.
+- Relaunch calls `launchApp` via `executeAction`, then `waitForScreenStable` to let the home screen settle.
+- Visited map is preserved across relaunch so already-explored screens are not re-audited.
+- Relaunch failure degrades gracefully: warning logged, loop continues (best-effort).
+
+**Fix (P5 — Step Budget Estimation)**:
+- At step 1, if a rich tree is available, `extractNavTargets` counts top-level sections.
+- Displays `N sections × 3 steps ≈ M steps needed` and computes `--max-steps` coverage percentage.
+- Warns if coverage < 60% with a suggested `--max-steps` value.
 
 **Sprint 2 backlog** (pending validation that relaunch fix is sufficient):
 - Overview mode (`--overview`) for section mapping
@@ -193,7 +203,7 @@ Deprecation warnings are currently suppressed. When AI SDK ships the replacement
 | H3 | High | ~20 LOC | Makes severity ratings trustworthy | Sprint 1 | ✅ DONE |
 | P1 | Post-dogfood | ~30 LOC | Eliminates font specimen false positives | Sprint 1 | ✅ DONE |
 | P3 | Post-dogfood | ~40 LOC | Breaks paginated content stuck loops | Sprint 1 | ✅ DONE |
-| P4+P5 | Post-dogfood | ~60 LOC | Subtree escape + step budget | Sprint 1 | ⏳ IN PROGRESS |
+| P4+P5 | Post-dogfood | ~60 LOC | Subtree escape + step budget | Sprint 1 | ✅ DONE |
 | M1 | Medium | varies | Covers blind spots incrementally | Sprint 2 | |
 | M2 | Medium | ~50 LOC | Better exploration coverage | Sprint 1–2 | ⏳ PARTIAL |
 | L1 | Low | ~60 LOC | Nice-to-have precision | Sprint 2 | |
