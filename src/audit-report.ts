@@ -368,14 +368,14 @@ function escapeQuote(s: string): string {
 
 // ── Dedup helpers ────────────────────────────────────────────
 
-/** Extract bigram set from a title for fuzzy comparison. */
-function titleBigrams(title: string): Set<string> {
-  const words = title.toLowerCase().replace(/[^a-z0-9\s]/g, '').split(/\s+/).filter(Boolean);
+/** Extract bigram set from a string for fuzzy comparison. */
+function textBigrams(s: string): Set<string> {
+  const words = s.toLowerCase().replace(/[^a-z0-9\s]/g, '').split(/\s+/).filter(Boolean);
   const bigrams = new Set<string>();
   for (let i = 0; i < words.length - 1; i++) {
     bigrams.add(`${words[i]} ${words[i + 1]}`);
   }
-  // Single-word titles: use the word itself as the only bigram
+  // Single-word input: use the word itself as the only bigram
   if (words.length === 1 && words[0]) bigrams.add(words[0]);
   return bigrams;
 }
@@ -392,12 +392,12 @@ const JACCARD_THRESHOLD = 0.5;
 
 /**
  * Four-pass dedup:
- * 1. Exact match on screenName + title (case-insensitive)
- * 2. Same screen + same principle → keep only the first (highest-confidence) instance.
+ * Pass 1. Exact match on screenName + title (case-insensitive)
+ * Pass 2. Same screen + same principle → keep only the first (highest-confidence) instance.
  *    Catches bilingual paraphrases where Jaccard fails ("Learn More" vs "進一步瞭解").
- * 3. Fuzzy title match within same screen (Jaccard > 0.5)
- * 4. Cross-screen principle dedup: same principle + similar title OR similar evidence
- *    catches the case where the AI gives different screen names to the same screen
+ * Pass 3. Fuzzy title match within same screen (Jaccard > 0.5)
+ * Pass 4. Cross-screen: same principle + similar title OR similar evidence — catches the
+ *    case where the AI gives different screen names to the same screen
  *    (e.g. "蘋方-簡 > 極細體 (Page 2)" vs "Font example page 2 (極細體)")
  */
 function deduplicateIssues(raw: AuditIssue[]): AuditIssue[] {
@@ -423,25 +423,25 @@ function deduplicateIssues(raw: AuditIssue[]): AuditIssue[] {
   const afterFuzzy: AuditIssue[] = [];
   for (const issue of afterScreenPrinciple) {
     const screen = issue.screenName.toLowerCase();
-    const bigrams = titleBigrams(issue.title);
+    const bigrams = textBigrams(issue.title);
     const isDup = afterFuzzy.some((existing) => {
       if (existing.screenName.toLowerCase() !== screen) return false;
-      return jaccardSimilarity(bigrams, titleBigrams(existing.title)) >= JACCARD_THRESHOLD;
+      return jaccardSimilarity(bigrams, textBigrams(existing.title)) >= JACCARD_THRESHOLD;
     });
     if (!isDup) afterFuzzy.push(issue);
   }
 
-  // Pass 3: cross-screen — same principle + (similar title OR similar evidence)
+  // Pass 4: cross-screen — same principle + (similar title OR similar evidence)
   const kept: AuditIssue[] = [];
   for (const issue of afterFuzzy) {
     const principle = issue.principle.toLowerCase();
-    const titleBi = titleBigrams(issue.title);
-    const evidenceBi = titleBigrams(issue.evidence);
+    const titleBi = textBigrams(issue.title);
+    const evidenceBi = textBigrams(issue.evidence);
     const isDup = kept.some((existing) => {
       if (existing.principle.toLowerCase() !== principle) return false;
-      const titleSim = jaccardSimilarity(titleBi, titleBigrams(existing.title));
+      const titleSim = jaccardSimilarity(titleBi, textBigrams(existing.title));
       if (titleSim >= JACCARD_THRESHOLD) return true;
-      const evidenceSim = jaccardSimilarity(evidenceBi, titleBigrams(existing.evidence));
+      const evidenceSim = jaccardSimilarity(evidenceBi, textBigrams(existing.evidence));
       return evidenceSim >= JACCARD_THRESHOLD;
     });
     if (!isDup) kept.push(issue);
