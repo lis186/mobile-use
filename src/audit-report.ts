@@ -78,6 +78,7 @@ export function renderReport(data: AuditReportData): string {
     renderSummary(data),
     renderIssues(data),
     renderScreenMap(data),
+    renderDepthFindings(data),
     renderPerformance(data),
     renderNextSteps(data),
   ];
@@ -214,6 +215,69 @@ function renderScreenMap(data: AuditReportData): string {
 Exploration path (discovery order):
 
 ${listItems}${onboardingLine}`;
+}
+
+const IA_DEPTH_THRESHOLD = 4;
+
+// Actions that increase navigation depth when taken from a screen.
+const DEPTH_INCREASING = ['tap', 'doubleTap', 'longPress', 'tapText', 'openLink', 'pressKey'];
+
+/**
+ * Walk steps in order and record the tap-depth at which each fingerprint was
+ * first discovered. Depth starts at 0 (root screen), increments on forward
+ * navigation, decrements on back(), resets on launchApp.
+ */
+function buildDepthMap(steps: StepRecord[]): Map<string, number> {
+  const depthMap = new Map<string, number>();
+  let depth = 0;
+  for (const step of steps) {
+    if (step.onboarding) continue;
+    if (!depthMap.has(step.fingerprint)) {
+      depthMap.set(step.fingerprint, depth);
+    }
+    const action = step.action;
+    if (action.startsWith('back')) {
+      depth = Math.max(0, depth - 1);
+    } else if (action.startsWith('launchApp')) {
+      depth = 0;
+    } else if (DEPTH_INCREASING.some((p) => action.startsWith(p))) {
+      depth += 1;
+    }
+  }
+  return depthMap;
+}
+
+function renderDepthFindings(data: AuditReportData): string {
+  const { steps } = data;
+  if (steps.length === 0) return '';
+
+  const depthMap = buildDepthMap(steps);
+  const firstName = new Map<string, string>();
+  for (const step of steps) {
+    if (!step.onboarding && !firstName.has(step.fingerprint)) {
+      firstName.set(step.fingerprint, step.screenName);
+    }
+  }
+
+  const deep = [...depthMap.entries()]
+    .filter(([, d]) => d > IA_DEPTH_THRESHOLD)
+    .map(([fp, depth]) => ({ name: firstName.get(fp) ?? fp, depth }))
+    .sort((a, b) => b.depth - a.depth);
+
+  if (deep.length === 0) return '';
+
+  const rows = deep.map(({ name, depth }) => `| ${escapeMd(name)} | ${depth} |`).join('\n');
+  const n = deep.length;
+
+  return `## Deep Navigation
+
+${n} screen${n === 1 ? '' : 's'} found more than ${IA_DEPTH_THRESHOLD} taps from the app root. Deep hierarchies increase navigation cost and risk abandonment for infrequent tasks (HIG: navigation depth ≤ ${IA_DEPTH_THRESHOLD}).
+
+| Screen | Taps from root |
+|--------|----------------|
+${rows}
+
+*Verify whether each screen is reachable via a shortcut (Spotlight, widget, or deep link) before treating depth as a UX issue.*`;
 }
 
 function renderPerformance(data: AuditReportData): string {
