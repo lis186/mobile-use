@@ -57,14 +57,10 @@ export async function finalizeReport(
     readTimingsJsonSafe(path.join(outputDir, 'timings.json')),
   ]);
 
-  // Dedup: same screen + same title = same issue; keep the first occurrence.
-  const seen = new Set<string>();
-  const issues = rawIssues.filter((issue) => {
-    const key = `${issue.screenName}\0${issue.title}`;
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
+  // Two-pass dedup:
+  // 1. Exact match on screenName + title (case-insensitive)
+  // 2. Fuzzy match: same screenName + Jaccard bigram similarity > 0.5
+  const issues = deduplicateIssues(rawIssues);
 
   const summary = summarize(timings, ctx.model);
   const md = renderReport({ ctx, steps, issues, timings, summary });
@@ -82,6 +78,7 @@ export function renderReport(data: AuditReportData): string {
     renderSummary(data),
     renderIssues(data),
     renderScreenMap(data),
+    renderDepthFindings(data),
     renderPerformance(data),
     renderNextSteps(data),
   ];
@@ -168,6 +165,9 @@ function renderIssueSection(issue: AuditIssue, ctx: AuditReportContext): string 
 
 **Evidence** (what the AI observed):
 > ${escapeQuote(issue.evidence)}
+${issue.contrastRatio != null ? `\n**Measured contrast ratio**: ${issue.contrastRatio}:1 (WCAG 2.1 requires 4.5:1 for normal text, 3:1 for large text)\n` : ''}
+**Cognitive Impact**:
+> ${escapeQuote(issue.cognitiveImpact)}
 
 **Recommendation**:
 ${escapeMd(issue.recommendation)}
@@ -215,6 +215,59 @@ function renderScreenMap(data: AuditReportData): string {
 Exploration path (discovery order):
 
 ${listItems}${onboardingLine}`;
+}
+
+const IA_DEPTH_THRESHOLD = 4;
+
+// Actions that increase navigation depth when taken from a screen.
+const DEPTH_INCREASING = ['tap', 'doubleTap', 'longPress', 'tapText', 'openLink', 'pressKey'];
+
+// Root is depth 0; back() can't go below 0; launchApp resets to 0.
+function buildDepthMap(steps: StepRecord[]): Map<string, { depth: number; name: string }> {
+  const map = new Map<string, { depth: number; name: string }>();
+  let depth = 0;
+  for (const step of steps) {
+    if (step.onboarding) continue;
+    if (!map.has(step.fingerprint)) {
+      map.set(step.fingerprint, { depth, name: step.screenName });
+    }
+    const action = step.action;
+    if (action.startsWith('back')) {
+      depth = Math.max(0, depth - 1);
+    } else if (action.startsWith('launchApp')) {
+      depth = 0;
+    } else if (DEPTH_INCREASING.some((p) => action.startsWith(p))) {
+      depth += 1;
+    }
+  }
+  return map;
+}
+
+function renderDepthFindings(data: AuditReportData): string {
+  const { steps } = data;
+  if (steps.length === 0) return '';
+
+  const depthMap = buildDepthMap(steps);
+
+  const deep = [...depthMap.values()]
+    .filter(({ depth }) => depth > IA_DEPTH_THRESHOLD)
+    .sort((a, b) => b.depth - a.depth);
+
+  if (deep.length === 0) return '';
+
+  const rows = deep.map(({ name, depth }) => `| ${escapeMd(name)} | ${depth} |`).join('\n');
+
+  const n = deep.length;
+
+  return `## Deep Navigation
+
+${n} screen${n === 1 ? '' : 's'} found more than ${IA_DEPTH_THRESHOLD} taps from the app root. Deep hierarchies increase navigation cost and risk abandonment for infrequent tasks (HIG: navigation depth ≤ ${IA_DEPTH_THRESHOLD}).
+
+| Screen | Taps from root |
+|--------|----------------|
+${rows}
+
+*Verify whether each screen is reachable via a shortcut (Spotlight, widget, or deep link) before treating depth as a UX issue.*`;
 }
 
 function renderPerformance(data: AuditReportData): string {
@@ -365,6 +418,89 @@ function escapeMd(s: string): string {
 /** Escape for use inside a blockquote — just collapse newlines. */
 function escapeQuote(s: string): string {
   return s.replace(/\r?\n/g, ' ').trim();
+}
+
+// ── Dedup helpers ────────────────────────────────────────────
+
+/** Extract bigram set from a string for fuzzy comparison. */
+function textBigrams(s: string): Set<string> {
+  const words = s.toLowerCase().replace(/[^a-z0-9\s]/g, '').split(/\s+/).filter(Boolean);
+  const bigrams = new Set<string>();
+  for (let i = 0; i < words.length - 1; i++) {
+    bigrams.add(`${words[i]} ${words[i + 1]}`);
+  }
+  // Single-word input: use the word itself as the only bigram
+  if (words.length === 1 && words[0]) bigrams.add(words[0]);
+  return bigrams;
+}
+
+function jaccardSimilarity(a: Set<string>, b: Set<string>): number {
+  if (a.size === 0 && b.size === 0) return 0;
+  let intersection = 0;
+  for (const x of a) if (b.has(x)) intersection++;
+  const union = a.size + b.size - intersection;
+  return union === 0 ? 0 : intersection / union;
+}
+
+const JACCARD_THRESHOLD = 0.5;
+
+/**
+ * Four-pass dedup:
+ * Pass 1. Exact match on screenName + title (case-insensitive)
+ * Pass 2. Same screen + same principle → keep only the first (highest-confidence) instance.
+ *    Catches bilingual paraphrases where Jaccard fails ("Learn More" vs "進一步瞭解").
+ * Pass 3. Fuzzy title match within same screen (Jaccard > 0.5)
+ * Pass 4. Cross-screen: same principle + similar title OR similar evidence — catches the
+ *    case where the AI gives different screen names to the same screen
+ *    (e.g. "蘋方-簡 > 極細體 (Page 2)" vs "Font example page 2 (極細體)")
+ */
+function deduplicateIssues(raw: AuditIssue[]): AuditIssue[] {
+  // Pass 1: exact case-insensitive
+  const exactSeen = new Set<string>();
+  const afterExact = raw.filter((issue) => {
+    const key = `${issue.screenName.toLowerCase()}\0${issue.title.toLowerCase()}`;
+    if (exactSeen.has(key)) return false;
+    exactSeen.add(key);
+    return true;
+  });
+
+  // Pass 2: same screen + same principle → keep only first (bilingual paraphrase guard)
+  const seenScreenPrinciple = new Set<string>();
+  const afterScreenPrinciple = afterExact.filter((issue) => {
+    const key = `${issue.screenName.toLowerCase()}\0${issue.principle.toLowerCase()}`;
+    if (seenScreenPrinciple.has(key)) return false;
+    seenScreenPrinciple.add(key);
+    return true;
+  });
+
+  // Pass 3: fuzzy within same screen
+  const afterFuzzy: AuditIssue[] = [];
+  for (const issue of afterScreenPrinciple) {
+    const screen = issue.screenName.toLowerCase();
+    const bigrams = textBigrams(issue.title);
+    const isDup = afterFuzzy.some((existing) => {
+      if (existing.screenName.toLowerCase() !== screen) return false;
+      return jaccardSimilarity(bigrams, textBigrams(existing.title)) >= JACCARD_THRESHOLD;
+    });
+    if (!isDup) afterFuzzy.push(issue);
+  }
+
+  // Pass 4: cross-screen — same principle + (similar title OR similar evidence)
+  const kept: AuditIssue[] = [];
+  for (const issue of afterFuzzy) {
+    const principle = issue.principle.toLowerCase();
+    const titleBi = textBigrams(issue.title);
+    const evidenceBi = textBigrams(issue.evidence);
+    const isDup = kept.some((existing) => {
+      if (existing.principle.toLowerCase() !== principle) return false;
+      const titleSim = jaccardSimilarity(titleBi, textBigrams(existing.title));
+      if (titleSim >= JACCARD_THRESHOLD) return true;
+      const evidenceSim = jaccardSimilarity(evidenceBi, textBigrams(existing.evidence));
+      return evidenceSim >= JACCARD_THRESHOLD;
+    });
+    if (!isDup) kept.push(issue);
+  }
+  return kept;
 }
 
 /** Read timings.json if present, returning the raw StepTiming[] for re-summarizing. */

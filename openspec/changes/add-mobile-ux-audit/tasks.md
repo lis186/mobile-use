@@ -185,3 +185,22 @@
 ## 20. Unit tests for rate limiter (from OPS-19)
 
 - [x] 20.1 Test `rate-limiter.ts`: single call within budget returns immediately, N+1 call blocks, timestamps outside window are pruned, `remaining()` returns correct count
+
+## Sprint 1 — Report Quality (Phase 2)
+
+### Core fixes (all done)
+- [x] S1.C1 Inject real frame dimensions (W×Hpt) into accessibility tree output
+- [x] S1.C2 Add `cognitiveImpact` field to schema + GOOD/BAD examples in prompt
+- [x] S1.C3 Scope guard: detect cross-app drift via `extractAppIdentifier()` and auto-back
+
+### High-priority fixes (all done)
+- [x] S1.H1 Fuzzy dedup with Jaccard bigram similarity + cross-screen principle dedup
+- [x] S1.H2 Anti-patterns: modal sheets, chrome, pull-to-refresh, back button labels, font specimens
+- [x] S1.H3 Severity calibration rubric with measurement thresholds
+
+### Post-dogfood fixes
+- [x] S1.P1 Font specimen false positives: CONTEXT FILTER + BAD example + code post-filter
+- [x] S1.P3 Paginated content stuck: consecutive swipe escape (MAX_CONSECUTIVE_SWIPES=4)
+- [x] S1.P4 Subtree escape: stuck escape → relaunch app instead of back
+- [x] S1.P5 Step budget estimation: parse home screen tree, count sections, display coverage estimate
+- [x] S1.V1 Final dogfood verification: clean simulator, 25-step Settings audit

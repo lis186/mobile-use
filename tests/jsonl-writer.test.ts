@@ -40,6 +40,7 @@ function makeIssue(id: string): AuditIssue {
     screenName: 'TestScreen',
     principle: 'Norman:Affordance',
     evidence: 'A concrete piece of evidence longer than twenty characters.',
+    cognitiveImpact: 'Users cannot distinguish this from decoration — trial-and-error required.',
     confidence: 80,
     recommendation: 'Do the thing',
     stepNumber: 1,

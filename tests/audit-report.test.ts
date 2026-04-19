@@ -55,6 +55,7 @@ function makeIssue(id: string, overrides: Partial<AuditIssue> = {}): AuditIssue 
     screenName: 'Chat list',
     principle: 'Norman:Affordance',
     evidence: 'A concrete piece of visual evidence longer than twenty characters.',
+    cognitiveImpact: 'Users cannot distinguish this element from static content, requiring trial-and-error.',
     confidence: 80,
     recommendation: 'Do the specific thing mentioned in the evidence',
     stepNumber: 5,
@@ -262,6 +263,68 @@ test('partial banner renders when partialReason is present', () => {
 test('partial banner omitted on normal completion', () => {
   const md = renderReport(makeData());
   assert.ok(!md.includes('Partial report'));
+});
+
+// ── Deep navigation findings ──────────────────────────────────
+
+test('deep navigation section absent when all screens are ≤4 taps', () => {
+  // 4 forward taps: root(0) → 1 → 2 → 3 → 4 — threshold is >4, so nothing flagged
+  const steps = [
+    makeStep(1, { fingerprint: 'fpA', action: 'tap(50,50)' }),
+    makeStep(2, { fingerprint: 'fpB', action: 'tap(50,50)' }),
+    makeStep(3, { fingerprint: 'fpC', action: 'tap(50,50)' }),
+    makeStep(4, { fingerprint: 'fpD', action: 'tap(50,50)' }),
+    makeStep(5, { fingerprint: 'fpE', action: 'done' }),
+  ];
+  const md = renderReport(makeData({ steps }));
+  assert.ok(!md.includes('## Deep Navigation'), 'section must not appear');
+});
+
+test('deep navigation section appears when a screen is 5 taps from root', () => {
+  const steps = [
+    makeStep(1, { fingerprint: 'fpA', screenName: 'Root', action: 'tap(50,50)' }),
+    makeStep(2, { fingerprint: 'fpB', screenName: 'L1', action: 'tap(50,50)' }),
+    makeStep(3, { fingerprint: 'fpC', screenName: 'L2', action: 'tap(50,50)' }),
+    makeStep(4, { fingerprint: 'fpD', screenName: 'L3', action: 'tap(50,50)' }),
+    makeStep(5, { fingerprint: 'fpE', screenName: 'L4', action: 'tap(50,50)' }),
+    makeStep(6, { fingerprint: 'fpF', screenName: 'L5 deep', action: 'done' }),
+  ];
+  const md = renderReport(makeData({ steps }));
+  assert.match(md, /## Deep Navigation/);
+  assert.match(md, /L5 deep/);
+  assert.match(md, /\| 5 \|/);
+});
+
+test('back() reduces depth so screen reached after back is not flagged', () => {
+  // 4 forward taps then back — sibling is at depth 3, not flagged
+  const steps = [
+    makeStep(1, { fingerprint: 'fpA', action: 'tap(50,50)' }),
+    makeStep(2, { fingerprint: 'fpB', action: 'tap(50,50)' }),
+    makeStep(3, { fingerprint: 'fpC', action: 'tap(50,50)' }),
+    makeStep(4, { fingerprint: 'fpD', action: 'tap(50,50)' }),
+    makeStep(5, { fingerprint: 'fpE', action: 'back' }),
+    makeStep(6, { fingerprint: 'fpF', screenName: 'Sibling', action: 'done' }),
+  ];
+  const md = renderReport(makeData({ steps }));
+  assert.ok(!md.includes('## Deep Navigation'), 'depth 3 sibling must not appear');
+});
+
+test('launchApp resets depth to 0', () => {
+  const steps = [
+    makeStep(1, { fingerprint: 'fpA', action: 'tap(50,50)' }),
+    makeStep(2, { fingerprint: 'fpB', action: 'tap(50,50)' }),
+    makeStep(3, { fingerprint: 'fpC', action: 'tap(50,50)' }),
+    makeStep(4, { fingerprint: 'fpD', action: 'tap(50,50)' }),
+    makeStep(5, { fingerprint: 'fpE', action: 'tap(50,50)' }),
+    makeStep(6, { fingerprint: 'fpF', screenName: 'Deep', action: 'launchApp("com.apple.Preferences")' }),
+    makeStep(7, { fingerprint: 'fpG', screenName: 'Home after relaunch', action: 'tap(50,50)' }),
+    makeStep(8, { fingerprint: 'fpH', screenName: 'Shallow', action: 'done' }),
+  ];
+  const md = renderReport(makeData({ steps }));
+  assert.match(md, /## Deep Navigation/);
+  assert.match(md, /Deep/);
+  // '| Shallow |' would only appear in the deep-findings table — verify it's absent
+  assert.ok(!md.includes('| Shallow |'), 'shallow screen must not appear in deep findings table');
 });
 
 // ── End-to-end shape ──────────────────────────────────────────

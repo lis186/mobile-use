@@ -118,10 +118,12 @@ export interface AuditIssue {
   principle: string;        // e.g. "Norman:Affordance" or "Nielsen:Consistency"
   persona?: string;         // e.g. "rushed" | "firsttime" | "power"
   evidence: string;         // concrete visual evidence, ≥20 chars
+  cognitiveImpact: string;  // HOW the user's cognition fails
   confidence: number;       // 0-100 integer
   recommendation: string;
   stepNumber: number;
   evidencePath: string;     // relative path to annotated screenshot
+  contrastRatio?: number;   // WCAG 2.1 measured ratio; only present for contrast issues
 }
 
 /** Visited screen record used by the exploration map */

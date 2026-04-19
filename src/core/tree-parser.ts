@@ -79,7 +79,7 @@ export function parseWDATree(xml: string): string {
       const pctX2 = Math.round(((px + pw) / screenW) * 100);
       const pctY2 = Math.round(((py + ph) / screenH) * 100);
 
-      lines.push(`[${shortType}] "${label}" (${pctX},${pctY} - ${pctX2},${pctY2})`);
+      lines.push(`[${shortType}] "${label}" (${pctX},${pctY} - ${pctX2},${pctY2}) ${pw}×${ph}pt`);
     } else {
       lines.push(`[${shortType}] "${label}"`);
     }
@@ -196,7 +196,7 @@ function walkXCTestNode(
         const pctY = Math.round((f.Y / screenH) * 100);
         const pctX2 = Math.round(((f.X + f.Width) / screenW) * 100);
         const pctY2 = Math.round(((f.Y + f.Height) / screenH) * 100);
-        lines.push(`[${typeName}] "${label}" (${pctX},${pctY} - ${pctX2},${pctY2})`);
+        lines.push(`[${typeName}] "${label}" (${pctX},${pctY} - ${pctX2},${pctY2}) ${Math.round(f.Width)}×${Math.round(f.Height)}pt`);
       }
     } else {
       lines.push(`[${typeName}] "${label}"`);
@@ -280,4 +280,47 @@ export function extractNavTargets(parsedText: string): string[] {
   }
 
   return targets;
+}
+
+/**
+ * Extract the root Application element's identifier from a raw accessibility tree.
+ * Used by the scope guard to detect when the agent has drifted to a different app.
+ *
+ * - XCTest JSON: root axElement with elementType 2 → label or title
+ * - WDA XML: <XCUIElementTypeApplication name="...">
+ *
+ * Returns null if the tree format is unrecognised or no app identifier is found.
+ */
+export function extractRootAppId(raw: string): string | null {
+  if (!raw || raw.trim().length < 5) return null;
+
+  // WDA XML path
+  if (raw.trimStart().startsWith('<') || raw.trimStart().startsWith('<?xml')) {
+    const m = raw.match(/<XCUIElementTypeApplication\s+[^>]*?name="([^"]+)"/);
+    return m ? m[1]! : null;
+  }
+
+  // XCTest JSON path
+  try {
+    const json = JSON.parse(raw) as Record<string, unknown>;
+    const ax = json.axElement as XCTestElement | undefined;
+    if (!ax) return null;
+
+    // The root Application element (elementType 2) carries the app's label
+    if (ax.elementType === 2) {
+      return ax.label || ax.title || null;
+    }
+    // Sometimes the root is a generic container wrapping the Application
+    if (ax.children) {
+      for (const child of ax.children) {
+        if (child.elementType === 2) {
+          return child.label || child.title || null;
+        }
+      }
+    }
+  } catch {
+    // Not valid JSON — ignore
+  }
+
+  return null;
 }
