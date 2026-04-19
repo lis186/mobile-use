@@ -93,6 +93,11 @@ export class AuditExecutor extends TaskExecutor {
   // with multiple fingerprints (different scroll states) from exhausting the budget
   // before other stuck screens can escape.
   private readonly relaunched = new Set<string>();
+  // M2: flow-level loop detection — ordered fingerprint trail + seen 3-tuples.
+  // Catches cycles that visit different screens (e.g. A→B→C→A→B→C) which the
+  // single-screen overexplored counter cannot detect.
+  private readonly flowHistory: string[] = [];
+  private readonly visitedFlows = new Set<string>();
 
   constructor(config: AuditConfig, apiKey: string, provider: 'google' | 'openai' = 'google') {
     // Build a stub TaskConfig for the parent's driver setup. The parent will
@@ -329,6 +334,7 @@ export class AuditExecutor extends TaskExecutor {
       });
       const screenName = result.screenName?.trim() || `Screen@${fingerprint}`;
       this.updateVisited(fingerprint, screenName, step);
+      this.flowHistory.push(fingerprint);
 
       if (result.parsedTree && result.parsedTree.grade === 'rich') {
         const targets = extractNavTargets(result.parsedTree.text);
@@ -441,6 +447,33 @@ export class AuditExecutor extends TaskExecutor {
       }
       if (result.navigation.action === 'failed') {
         throw new AuditError('E_APP_CRASHED', `Agent gave up: ${result.reasoning}`);
+      }
+
+      // ── M2: Flow-level loop escape ──────────────────────────
+      // Detects when the same 3-screen sequence (fingerprint tuple) repeats.
+      // Complements P4 (same single screen) and P3 (consecutive swipes):
+      // catches multi-screen cycles like A→B→C→A→B→C that bypass both.
+      if (this.flowHistory.length >= 3) {
+        const flowKey = this.flowHistory.slice(-3).join('|');
+        if (this.visitedFlows.has(flowKey)) {
+          console.log(pc.yellow(`  ⚠️  Flow loop: 3-screen cycle repeated — forcing back`));
+          try {
+            await this.executeAction({ action: 'back', params: {}, reasoning: 'flow loop escape', progress: 0 });
+          } catch { /* best effort */ }
+          this.recentActions.push(
+            'STUCK: flow loop (same 3-screen sequence repeated) — backtracking to explore a different path',
+          );
+          await this.recordStep(step, fingerprint, screenName, result, persistedIssues, {
+            screenshot_ms: Math.round(t1 - t0),
+            tree_ms: 0,
+            ai_ms: Math.round(t2 - t1),
+            action_ms: 0,
+            sleep_ms: 0,
+            total_ms: Math.round(performance.now() - t0),
+          }, 'back (flow loop escape)');
+          continue;
+        }
+        this.visitedFlows.add(flowKey);
       }
 
       // ── P4: Overexplored screen → escalate to relaunch ──────
@@ -639,6 +672,7 @@ export class AuditExecutor extends TaskExecutor {
     result: AuditStepResult,
     persistedIssues: AuditIssue[],
     times: Omit<StepTiming, 'step' | 'input_tokens' | 'output_tokens' | 'cached_tokens'>,
+    actionOverride?: string,
   ): Promise<void> {
     const timing: StepTiming = {
       step,
@@ -653,7 +687,7 @@ export class AuditExecutor extends TaskExecutor {
       step,
       fingerprint,
       screenName,
-      action: this.formatAction(result.navigation),
+      action: actionOverride ?? this.formatAction(result.navigation),
       reasoning: result.reasoning,
       issuesFound: persistedIssues.map((i) => i.id),
       onboarding: result.onboardingDetected,
