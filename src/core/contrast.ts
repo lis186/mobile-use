@@ -2,33 +2,23 @@ import sharp from 'sharp';
 
 const SAMPLE_SIZE = 60; // px — ~20pt at 3x retina; wide enough for text+background
 
-// WCAG 2.1 §1.4.3 linearized sRGB component.
 function linearize(c: number): number {
   const s = c / 255;
   return s <= 0.04045 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
 }
 
-// WCAG 2.1 relative luminance.
 function luminance(r: number, g: number, b: number): number {
   return 0.2126 * linearize(r) + 0.7152 * linearize(g) + 0.0722 * linearize(b);
 }
 
-// WCAG 2.1 contrast ratio — always returns ≥ 1.
+// Always returns ≥ 1 — guaranteed by the (L + 0.05) / (L + 0.05) formula bounds.
 export function wcagContrast(l1: number, l2: number): number {
   const light = Math.max(l1, l2);
   const dark = Math.min(l1, l2);
   return (light + 0.05) / (dark + 0.05);
 }
 
-/**
- * Sample a 60×60-pixel region centred on (xPct, yPct) of the image,
- * cluster pixels into light and dark halves, then return the WCAG 2.1
- * contrast ratio between the two cluster medians.
- *
- * Returns null when sampling fails (corrupt buffer, region outside image, etc.).
- * The result is an approximation for text-on-background scenarios; complex
- * mixed-content regions may read lower than the true typographic contrast.
- */
+// Returns null on corrupt buffer or region too small to sample reliably.
 export async function sampleContrast(
   imageBuffer: Buffer,
   xPct: number,

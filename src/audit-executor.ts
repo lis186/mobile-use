@@ -335,6 +335,7 @@ export class AuditExecutor extends TaskExecutor {
       const screenName = result.screenName?.trim() || `Screen@${fingerprint}`;
       this.updateVisited(fingerprint, screenName, step);
       this.flowHistory.push(fingerprint);
+      if (this.flowHistory.length > 3) this.flowHistory.shift();
 
       if (result.parsedTree && result.parsedTree.grade === 'rich') {
         const targets = extractNavTargets(result.parsedTree.text);
