@@ -631,3 +631,58 @@ Use this after any group is finished. The `openspec status --change "add-mobile-
 - **Overview mode deferred**: pre-mortem identified scope creep risk; validate relaunch fix first
 - **Multi-session exploration deferred**: needs validation that single-session coverage is insufficient
 - **Deterministic replay navigation deferred**: path fragility risk identified in pre-mortem
+
+---
+
+## 10 · Sprint 2 — Exploration Quality + Structural Findings (Phase 2)
+
+**Branch**: `phase2-sprint2` (based on `phase2-sprint1` which is merged to `main`)
+**Goal**: Close the remaining M2 exploration loop + add structural findings to report
+**Date**: 2026-04-19
+**Tests**: 118 / 118 passing
+
+### Completed
+
+| ID | Fix | Commits | Key files |
+|----|-----|---------|-----------|
+| M2 | Flow-level loop escape — 3-fingerprint cycle detection | `3e51e60`, `512eee5` | `src/audit-executor.ts` |
+| M1 | IA depth analysis — flag screens > 4 taps from root | `36b360d`, `87f734a` | `src/audit-report.ts`, `tests/audit-report.test.ts` |
+| L1 | WCAG 2.1 contrast ratio via pixel sampling | `e11caf9` | `src/core/contrast.ts` (new), `src/schemas/audit.ts`, `src/types.ts`, `src/audit-executor.ts`, `src/audit-report.ts`, `src/audit-agent.ts`, `tests/contrast.test.ts` (new) |
+
+### Implementation notes
+
+**M2 — Flow-level loop escape**:
+- `AuditExecutor` has two new fields: `flowHistory: string[]` (ordered fingerprint trail) and `visitedFlows: Set<string>` (seen 3-tuples).
+- Each step pushes its fingerprint to `flowHistory`. After the done/failed check, if the latest 3-tuple is already in `visitedFlows`, a `back()` is forced, a STUCK message is injected into `recentActions` (so the AI sees it next step), and the step is recorded with `actionOverride = 'back (flow loop escape)'`.
+- Complements P3 (consecutive swipes) and P4 (single-screen overexplored) without overlapping them.
+
+**M1 — IA depth analysis**:
+- `buildDepthMap(steps)` in `audit-report.ts` does a single pass: tracks `depth` counter (increments on forward nav, decrements on `back`, resets on `launchApp`), records each fingerprint's first-visit depth + screen name.
+- Returns `Map<fingerprint, { depth, name }>`. `renderDepthFindings()` filters for depth > 4 and inserts a `## Deep Navigation` section after the Screen Map. Section is omitted entirely if no screens qualify.
+- 4 unit tests: threshold boundary, 5-tap detection, back() reduction, launchApp reset.
+
+**L1 — WCAG 2.1 contrast ratio**:
+- `src/core/contrast.ts` exports `sampleContrast(buffer, xPct, yPct)` and `wcagContrast(l1, l2)`.
+- Sampling: extract 60×60-px region from screenshot, `removeAlpha()`, sort luminances, use p12.5 as dark anchor and p87.5 as light anchor (25% trim each side), compute ratio rounded to 2dp. Returns null on failure.
+- Schema: `elementX`/`elementY` (0–100%, optional) added to `auditIssueSchema` so the AI can report the element's centre coordinates.
+- Executor: for issues where `principle` matches `/contrast/i` AND `elementX`/`elementY` are present, `sampleContrast` is called concurrently with `saveEvidence` (both in the same `Promise.all`). Result stored in `AuditIssue.contrastRatio?`.
+- Report: if `contrastRatio` is present, a "Measured contrast ratio: X:1 (WCAG 2.1 requires...)" line appears between Evidence and Cognitive Impact.
+- Prompt: Layer 1 extended with explicit instruction to provide `elementX`/`elementY` for contrast issues.
+- 8 unit tests cover pure math (black/white = 21, same = 1, symmetry, mid-grey) + sampling (null on corrupt, solid white = 1, half black/white = high, edge coordinate clamping).
+
+### What's left in Phase 2 backlog
+
+| ID | Status | Notes |
+|----|--------|-------|
+| M1 Dynamic Type pass | Not started | `--accessibility-pass` flag; restart audit at large text size |
+| L2 Physical device support | Not started | iOS 26 WDA driver validation; Decision 20 Phase 2 |
+| L3 AI SDK v6 migration | Not started | `generateObject` deprecation warnings; deferred until SDK ships replacement with vision guarantees |
+
+### Next obvious steps
+
+1. **Dogfood Sprint 2** — run a 25-step Settings audit with the new code and verify:
+   - Flow loop escape fires at least once in a longer run (Maps or Safari audit are better candidates)
+   - Deep Navigation section appears for Settings (deep settings paths exist > 4 taps)
+   - At least one contrast issue triggers pixel sampling (look for "Measured contrast ratio" in report)
+2. **M1 Dynamic Type pass** — `--accessibility-pass` flag that relaunches audit with large Dynamic Type enabled and compares layouts. ~100 LOC in executor + new CLI flag.
+3. **PR for Sprint 2** — `phase2-sprint2` → `main`.
