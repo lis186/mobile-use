@@ -381,6 +381,7 @@ If the screen's PURPOSE is to show what something looks like, the visual appeara
 == FOUR-LAYER QUALITY CONTROL ==
 
 Layer 1 — EVIDENCE REQUIRED: every issue MUST cite concrete visual facts. Element sizes in points are shown next to each element in the accessibility data as "W×Hpt" — use these REAL measurements in your evidence and in the measured_width_pt / measured_height_pt fields. Do NOT estimate sizes from the screenshot. Vague impressions ("feels cluttered") are NOT issues.
+For CONTRAST issues: also provide elementX and elementY (0–100 percent of screen width/height) for the flagged element's centre. The audit tool will sample pixels at those coordinates and compute the real WCAG 2.1 ratio automatically — your estimate in the evidence will be cross-checked against the measurement.
 
 Layer 2 — COMPARATIVE ANCHORING: compare against iOS HIG numbers above. Don't flag issues that meet the standard.
 

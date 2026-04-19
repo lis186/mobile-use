@@ -32,6 +32,7 @@ import { fingerprintScreen } from './core/screen-fingerprint.js';
 import { extractNavTargets, extractRootAppId } from './core/tree-parser.js';
 import { appendStep, appendIssue } from './core/jsonl-writer.js';
 import { saveEvidence } from './core/evidence.js';
+import { sampleContrast } from './core/contrast.js';
 import { annotateScreenshot, writeAnnotated, firstParamText } from './core/annotate.js';
 import { summarize } from './core/step-timing.js';
 import { finalizeReport } from './audit-report.js';
@@ -382,7 +383,13 @@ export class AuditExecutor extends TaskExecutor {
         });
         persistedIssues = await Promise.all(
           withIds.map(async ({ issue, id }) => {
-            const evidencePath = await saveEvidence(this.auditConfig.outputDir, screenshotBuffer, id);
+            const isContrastIssue = /contrast/i.test(issue.principle);
+            const [evidencePath, contrastRatio] = await Promise.all([
+              saveEvidence(this.auditConfig.outputDir, screenshotBuffer, id),
+              isContrastIssue && issue.elementX != null && issue.elementY != null
+                ? sampleContrast(screenshotBuffer, issue.elementX, issue.elementY)
+                : Promise.resolve(null),
+            ]);
             const persisted: AuditIssue = {
               id,
               title: issue.title,
@@ -396,6 +403,7 @@ export class AuditExecutor extends TaskExecutor {
               recommendation: issue.recommendation,
               stepNumber: step,
               evidencePath,
+              ...(contrastRatio != null ? { contrastRatio } : {}),
             };
             await appendIssue(this.auditConfig.outputDir, persisted);
             return persisted;

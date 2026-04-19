@@ -165,7 +165,7 @@ function renderIssueSection(issue: AuditIssue, ctx: AuditReportContext): string 
 
 **Evidence** (what the AI observed):
 > ${escapeQuote(issue.evidence)}
-
+${issue.contrastRatio != null ? `\n**Measured contrast ratio**: ${issue.contrastRatio}:1 (WCAG 2.1 requires 4.5:1 for normal text, 3:1 for large text)\n` : ''}
 **Cognitive Impact**:
 > ${escapeQuote(issue.cognitiveImpact)}
 

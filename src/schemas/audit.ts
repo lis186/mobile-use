@@ -51,6 +51,20 @@ export const auditIssueSchema = z.object({
     .number()
     .optional()
     .describe('actual height in points from accessibility tree frame data; include when citing a tap target size issue'),
+  elementX: z
+    .number()
+    .int()
+    .min(0)
+    .max(100)
+    .optional()
+    .describe('x position of the flagged element centre as a percentage of screen width (0–100); REQUIRED for contrast issues so pixel-accurate WCAG measurement can be computed automatically'),
+  elementY: z
+    .number()
+    .int()
+    .min(0)
+    .max(100)
+    .optional()
+    .describe('y position of the flagged element centre as a percentage of screen height (0–100); REQUIRED for contrast issues so pixel-accurate WCAG measurement can be computed automatically'),
 });
 
 export const auditBlockSchema = z.object({

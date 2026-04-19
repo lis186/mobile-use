@@ -123,6 +123,7 @@ export interface AuditIssue {
   recommendation: string;
   stepNumber: number;
   evidencePath: string;     // relative path to annotated screenshot
+  contrastRatio?: number;   // WCAG 2.1 measured ratio; only present for contrast issues
 }
 
 /** Visited screen record used by the exploration map */
