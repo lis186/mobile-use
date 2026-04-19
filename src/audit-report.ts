@@ -222,18 +222,14 @@ const IA_DEPTH_THRESHOLD = 4;
 // Actions that increase navigation depth when taken from a screen.
 const DEPTH_INCREASING = ['tap', 'doubleTap', 'longPress', 'tapText', 'openLink', 'pressKey'];
 
-/**
- * Walk steps in order and record the tap-depth at which each fingerprint was
- * first discovered. Depth starts at 0 (root screen), increments on forward
- * navigation, decrements on back(), resets on launchApp.
- */
-function buildDepthMap(steps: StepRecord[]): Map<string, number> {
-  const depthMap = new Map<string, number>();
+// Root is depth 0; back() can't go below 0; launchApp resets to 0.
+function buildDepthMap(steps: StepRecord[]): Map<string, { depth: number; name: string }> {
+  const map = new Map<string, { depth: number; name: string }>();
   let depth = 0;
   for (const step of steps) {
     if (step.onboarding) continue;
-    if (!depthMap.has(step.fingerprint)) {
-      depthMap.set(step.fingerprint, depth);
+    if (!map.has(step.fingerprint)) {
+      map.set(step.fingerprint, { depth, name: step.screenName });
     }
     const action = step.action;
     if (action.startsWith('back')) {
@@ -244,7 +240,7 @@ function buildDepthMap(steps: StepRecord[]): Map<string, number> {
       depth += 1;
     }
   }
-  return depthMap;
+  return map;
 }
 
 function renderDepthFindings(data: AuditReportData): string {
@@ -252,21 +248,15 @@ function renderDepthFindings(data: AuditReportData): string {
   if (steps.length === 0) return '';
 
   const depthMap = buildDepthMap(steps);
-  const firstName = new Map<string, string>();
-  for (const step of steps) {
-    if (!step.onboarding && !firstName.has(step.fingerprint)) {
-      firstName.set(step.fingerprint, step.screenName);
-    }
-  }
 
-  const deep = [...depthMap.entries()]
-    .filter(([, d]) => d > IA_DEPTH_THRESHOLD)
-    .map(([fp, depth]) => ({ name: firstName.get(fp) ?? fp, depth }))
+  const deep = [...depthMap.values()]
+    .filter(({ depth }) => depth > IA_DEPTH_THRESHOLD)
     .sort((a, b) => b.depth - a.depth);
 
   if (deep.length === 0) return '';
 
   const rows = deep.map(({ name, depth }) => `| ${escapeMd(name)} | ${depth} |`).join('\n');
+
   const n = deep.length;
 
   return `## Deep Navigation

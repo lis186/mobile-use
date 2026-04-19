@@ -295,31 +295,30 @@ test('deep navigation section appears when a screen is 5 taps from root', () => 
   assert.match(md, /\| 5 \|/);
 });
 
-test('back() reduces depth so screeen reached after back is not flagged', () => {
-  // Go 5 taps deep, come back to depth 3, discover a new screen — should NOT be flagged
+test('back() reduces depth so screen reached after back is not flagged', () => {
+  // 4 forward taps then back — sibling is at depth 3, not flagged
   const steps = [
-    makeStep(1, { fingerprint: 'fpA', action: 'tap(50,50)' }),  // depth 0 → 1
-    makeStep(2, { fingerprint: 'fpB', action: 'tap(50,50)' }),  // depth 1 → 2
-    makeStep(3, { fingerprint: 'fpC', action: 'tap(50,50)' }),  // depth 2 → 3
-    makeStep(4, { fingerprint: 'fpD', action: 'tap(50,50)' }),  // depth 3 → 4
-    makeStep(5, { fingerprint: 'fpE', action: 'back' }),         // depth 4 → 3
-    makeStep(6, { fingerprint: 'fpF', screenName: 'Sibling', action: 'done' }), // depth 3
+    makeStep(1, { fingerprint: 'fpA', action: 'tap(50,50)' }),
+    makeStep(2, { fingerprint: 'fpB', action: 'tap(50,50)' }),
+    makeStep(3, { fingerprint: 'fpC', action: 'tap(50,50)' }),
+    makeStep(4, { fingerprint: 'fpD', action: 'tap(50,50)' }),
+    makeStep(5, { fingerprint: 'fpE', action: 'back' }),
+    makeStep(6, { fingerprint: 'fpF', screenName: 'Sibling', action: 'done' }),
   ];
   const md = renderReport(makeData({ steps }));
   assert.ok(!md.includes('## Deep Navigation'), 'depth 3 sibling must not appear');
 });
 
 test('launchApp resets depth to 0', () => {
-  // Navigate 5 levels deep, relaunch, then navigate 2 levels — second path should not be flagged
   const steps = [
     makeStep(1, { fingerprint: 'fpA', action: 'tap(50,50)' }),
     makeStep(2, { fingerprint: 'fpB', action: 'tap(50,50)' }),
     makeStep(3, { fingerprint: 'fpC', action: 'tap(50,50)' }),
     makeStep(4, { fingerprint: 'fpD', action: 'tap(50,50)' }),
     makeStep(5, { fingerprint: 'fpE', action: 'tap(50,50)' }),
-    makeStep(6, { fingerprint: 'fpF', screenName: 'Deep', action: 'launchApp("com.apple.Preferences")' }), // depth 5 (flagged)
-    makeStep(7, { fingerprint: 'fpG', screenName: 'Home after relaunch', action: 'tap(50,50)' }),          // depth reset to 0
-    makeStep(8, { fingerprint: 'fpH', screenName: 'Shallow', action: 'done' }),                            // depth 1 (not flagged)
+    makeStep(6, { fingerprint: 'fpF', screenName: 'Deep', action: 'launchApp("com.apple.Preferences")' }),
+    makeStep(7, { fingerprint: 'fpG', screenName: 'Home after relaunch', action: 'tap(50,50)' }),
+    makeStep(8, { fingerprint: 'fpH', screenName: 'Shallow', action: 'done' }),
   ];
   const md = renderReport(makeData({ steps }));
   assert.match(md, /## Deep Navigation/);
