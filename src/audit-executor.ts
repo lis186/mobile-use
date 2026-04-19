@@ -93,9 +93,8 @@ export class AuditExecutor extends TaskExecutor {
   // with multiple fingerprints (different scroll states) from exhausting the budget
   // before other stuck screens can escape.
   private readonly relaunched = new Set<string>();
-  // M2: flow-level loop detection — ordered fingerprint trail + seen 3-tuples.
-  // Catches cycles that visit different screens (e.g. A→B→C→A→B→C) which the
-  // single-screen overexplored counter cannot detect.
+  // Ordered fingerprint trail + seen 3-tuples for flow-level cycle detection.
+  // Catches multi-screen cycles (A→B→C→A→B→C) that the single-screen counter misses.
   private readonly flowHistory: string[] = [];
   private readonly visitedFlows = new Set<string>();
 
@@ -449,10 +448,8 @@ export class AuditExecutor extends TaskExecutor {
         throw new AuditError('E_APP_CRASHED', `Agent gave up: ${result.reasoning}`);
       }
 
-      // ── M2: Flow-level loop escape ──────────────────────────
-      // Detects when the same 3-screen sequence (fingerprint tuple) repeats.
       // Complements P4 (same single screen) and P3 (consecutive swipes):
-      // catches multi-screen cycles like A→B→C→A→B→C that bypass both.
+      // catches multi-screen cycles that bypass both by entering from a different entry point.
       if (this.flowHistory.length >= 3) {
         const flowKey = this.flowHistory.slice(-3).join('|');
         if (this.visitedFlows.has(flowKey)) {
