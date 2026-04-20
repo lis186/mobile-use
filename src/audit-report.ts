@@ -39,6 +39,8 @@ export interface AuditReportData {
   issues: AuditIssue[];
   timings: StepTiming[];
   summary: TimingSummary;
+  /** Issues found during the Dynamic Type accessibility pass (--accessibility-pass). Absent when the pass was not run. */
+  dtIssues?: AuditIssue[];
 }
 
 // ── Public functions ─────────────────────────────────────────
@@ -51,19 +53,21 @@ export async function finalizeReport(
   outputDir: string,
   ctx: AuditReportContext,
 ): Promise<void> {
-  const [steps, rawIssues, timings] = await Promise.all([
+  const [steps, rawIssues, timings, rawDtIssues] = await Promise.all([
     readJsonl<StepRecord>(path.join(outputDir, 'steps.jsonl')),
     readJsonl<AuditIssue>(path.join(outputDir, 'issues.jsonl')),
     readTimingsJsonSafe(path.join(outputDir, 'timings.json')),
+    readJsonl<AuditIssue>(path.join(outputDir, 'a11y-issues.jsonl')),
   ]);
 
   // Two-pass dedup:
   // 1. Exact match on screenName + title (case-insensitive)
   // 2. Fuzzy match: same screenName + Jaccard bigram similarity > 0.5
   const issues = deduplicateIssues(rawIssues);
+  const dtIssues = rawDtIssues.length > 0 ? rawDtIssues : undefined;
 
   const summary = summarize(timings, ctx.model);
-  const md = renderReport({ ctx, steps, issues, timings, summary });
+  const md = renderReport({ ctx, steps, issues, timings, summary, dtIssues });
   await writeFile(path.join(outputDir, 'report.md'), md, 'utf-8');
 }
 
@@ -79,6 +83,7 @@ export function renderReport(data: AuditReportData): string {
     renderIssues(data),
     renderScreenMap(data),
     renderDepthFindings(data),
+    renderDynamicTypeFindings(data),
     renderPerformance(data),
     renderNextSteps(data),
   ];
@@ -268,6 +273,16 @@ ${n} screen${n === 1 ? '' : 's'} found more than ${IA_DEPTH_THRESHOLD} taps from
 ${rows}
 
 *Verify whether each screen is reachable via a shortcut (Spotlight, widget, or deep link) before treating depth as a UX issue.*`;
+}
+
+function renderDynamicTypeFindings(data: AuditReportData): string {
+  if (!data.dtIssues || data.dtIssues.length === 0) return '';
+  const sorted = [...data.dtIssues].sort(severityRank);
+  const header = `## Dynamic Type Findings
+
+> Second pass at **accessibility-extra-large** Dynamic Type size. Issues below are caused by large text and may not appear at the default size.`;
+  const sections = sorted.map((issue) => renderIssueSection(issue, data.ctx)).join('\n\n---\n\n');
+  return `${header}\n\n${sections}`;
 }
 
 function renderPerformance(data: AuditReportData): string {

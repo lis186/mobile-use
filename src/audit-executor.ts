@@ -18,6 +18,7 @@
  */
 
 import { writeFileSync, readFileSync, unlinkSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import { writeFile, mkdir } from 'node:fs/promises';
 import * as path from 'node:path';
 import { performance } from 'node:perf_hooks';
@@ -29,7 +30,7 @@ import { AuditError, isAuditError, type AuditErrorCode } from './errors/audit-er
 import { WDAClient } from './wda.js';
 import { XCTestClient } from './xctest.js';
 import { fingerprintScreen } from './core/screen-fingerprint.js';
-import { extractNavTargets, extractRootAppId } from './core/tree-parser.js';
+import { extractNavTargets, extractRootAppId, parseAccessibilityTreeDetailed } from './core/tree-parser.js';
 import { appendStep, appendIssue } from './core/jsonl-writer.js';
 import { saveEvidence } from './core/evidence.js';
 import { sampleContrast } from './core/contrast.js';
@@ -203,6 +204,10 @@ export class AuditExecutor extends TaskExecutor {
       }
 
       await this.runLoop();
+
+      if (this.auditConfig.accessibilityPass && !this.cancelRequested) {
+        await this.runAccessibilityPass();
+      }
     } catch (err) {
       if (isAuditError(err)) {
         partialReason = err.code;
@@ -702,6 +707,160 @@ export class AuditExecutor extends TaskExecutor {
     if (result.onboardingDetected) this.onboardingSteps++;
 
     await appendStep(this.auditConfig.outputDir, record);
+  }
+
+  // ── Dynamic Type accessibility pass (M1) ─────────────────────
+
+  /** Set the simulator's Dynamic Type content size via xcrun simctl. */
+  private setContentSize(size: string): void {
+    const deviceId = this.auditConfig.deviceId ?? 'booted';
+    execFileSync('xcrun', ['simctl', 'ui', deviceId, 'content_size', size]);
+  }
+
+  /**
+   * Second audit pass at accessibility-extra-large Dynamic Type size.
+   * Runs after the main runLoop() when --accessibility-pass is set.
+   * Issues go to a11y-issues.jsonl; annotated frames go to annotated/dt-NN.jpg.
+   */
+  private async runAccessibilityPass(): Promise<void> {
+    console.log(pc.cyan('\n♿ Dynamic Type pass: setting accessibility-extra-large content size...'));
+    try {
+      this.setContentSize('accessibility-extra-large');
+    } catch (err) {
+      console.log(pc.yellow(`  ⚠️  Failed to set content size: ${(err as Error).message} — skipping DT pass`));
+      return;
+    }
+
+    console.log(pc.cyan('   Relaunching app at large text...'));
+    try {
+      await this.maestro.launch();
+    } catch (err) {
+      console.log(pc.yellow(`  ⚠️  Failed to relaunch app: ${(err as Error).message} — skipping DT pass`));
+      this.restoreContentSize();
+      return;
+    }
+    await sleep(1500);
+
+    const dtMaxSteps = Math.min(10, this.auditConfig.maxSteps);
+    let dtIssueCounter = 0;
+    const dtVisited = new Map<string, import('./types.js').VisitedScreen>();
+
+    for (let step = 1; step <= dtMaxSteps && !this.cancelRequested; step++) {
+      console.log(pc.dim(`\n${'─'.repeat(40)}`));
+      console.log(pc.bold(`♿ DT Step ${step}/${dtMaxSteps}`));
+
+      let screenshotBuffer: Buffer;
+      let screenshotBase64: string;
+      let tree: string | undefined;
+      try {
+        const obs = await this.observeWithRetry(step);
+        screenshotBuffer = obs.screenshotBuffer;
+        screenshotBase64 = obs.screenshotB64;
+        tree = obs.tree;
+      } catch (err) {
+        console.log(pc.yellow(`  ⚠️  DT observe failed: ${(err as Error).message} — ending DT pass`));
+        break;
+      }
+
+      const parsedTree = tree ? parseAccessibilityTreeDetailed(tree) : null;
+      const fingerprint = await fingerprintScreen({
+        parsed: parsedTree ?? undefined,
+        screenshotBase64,
+        grade: parsedTree?.grade ?? 'empty',
+      });
+      const navTargets = parsedTree ? extractNavTargets(parsedTree.text) : [];
+      const unvisitedTargets = navTargets.filter(
+        (t) => ![...dtVisited.values()].map((v) => v.name.toLowerCase()).includes(t.toLowerCase()),
+      );
+
+      let result: AuditStepResult;
+      try {
+        result = await this.auditAgent.decideAudit(
+          {
+            stepNumber: step,
+            totalSteps: dtMaxSteps,
+            screenshotBuffer,
+            accessibilityTree: tree,
+            visited: dtVisited,
+            unvisitedTargets,
+            recentActions: [],
+            scope: this.auditConfig.scope,
+          },
+          'accessibility',
+        );
+      } catch (err) {
+        console.log(pc.yellow(`  ⚠️  DT AI call failed: ${(err as Error).message} — ending DT pass`));
+        break;
+      }
+
+      // Update DT visited map
+      const existing = dtVisited.get(fingerprint);
+      if (existing) {
+        existing.count++;
+      } else {
+        dtVisited.set(fingerprint, {
+          fingerprint,
+          name: result.screenName,
+          count: 1,
+          firstStep: step,
+          issuesFound: 0,
+        });
+      }
+
+      // Annotate + persist DT issues
+      const annotatedBuffer = await annotateScreenshot(screenshotBuffer, result.navigation, {
+        stepNumber: step,
+        totalSteps: dtMaxSteps,
+        model: this.auditConfig.model,
+      });
+      await writeAnnotated(this.auditConfig.outputDir, step, annotatedBuffer, 'dt');
+
+      if (result.audit?.issues?.length) {
+        for (const issue of result.audit.issues) {
+          dtIssueCounter++;
+          const issueId = `DT-${String(dtIssueCounter).padStart(3, '0')}`;
+          const dtIssue: import('./types.js').AuditIssue = {
+            id: issueId,
+            title: issue.title,
+            severity: issue.severity,
+            screenName: result.screenName,
+            principle: issue.principle,
+            persona: issue.persona ?? undefined,
+            evidence: issue.evidence,
+            cognitiveImpact: issue.cognitiveImpact,
+            confidence: issue.confidence,
+            recommendation: issue.recommendation,
+            stepNumber: step,
+            evidencePath: `annotated/dt-${String(step).padStart(2, '0')}.jpg`,
+          };
+          dtVisited.get(fingerprint)!.issuesFound++;
+          await appendIssue(this.auditConfig.outputDir, dtIssue, 'a11y-issues.jsonl');
+        }
+      }
+
+      // Execute action + wait
+      try {
+        await this.executeAction(result.navigation);
+      } catch {
+        // best-effort; DT pass doesn't halt on action failure
+      }
+      if (NAVIGATION_ACTIONS.has(result.navigation.action)) {
+        await this.waitForScreenStable(this.auditConfig.stableTimeout, STABLE_POLL_INTERVAL_MS);
+      } else {
+        await sleep(this.getPostActionDelay(result.navigation.action));
+      }
+    }
+
+    this.restoreContentSize();
+    console.log(pc.cyan(`\n♿ Dynamic Type pass complete: ${dtIssueCounter} issue(s) found`));
+  }
+
+  private restoreContentSize(): void {
+    try {
+      this.setContentSize('medium');
+    } catch {
+      console.log(pc.yellow('  ⚠️  Failed to restore content size — run `xcrun simctl ui booted content_size medium` manually if needed'));
+    }
   }
 
   private async finalize(partialReason?: AuditPartialReason): Promise<void> {

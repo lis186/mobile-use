@@ -107,6 +107,7 @@ export interface AuditConfig {
   skipLaunch: boolean;
   live: boolean;
   livePort: number;
+  accessibilityPass: boolean;
 }
 
 /** A single UX issue discovered during an audit step */

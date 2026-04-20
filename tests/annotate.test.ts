@@ -169,3 +169,23 @@ test('writeAnnotated: zero-pads step numbers to 2 digits', async (t) => {
   assert.equal(rel1, 'annotated/step-01.jpg');
   assert.equal(rel12, 'annotated/step-12.jpg');
 });
+
+test('writeAnnotated: uses custom prefix for Dynamic Type pass frames', async (t) => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'annotate-test-'));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+
+  const bg = await makeBlankScreenshot();
+  const decision: AgentDecision = {
+    action: 'tap',
+    params: { x: 50, y: 50 },
+    reasoning: 'Tap.',
+    progress: 5,
+  };
+  const annotated = await annotateScreenshot(bg, decision, ctx);
+
+  const rel = await writeAnnotated(dir, 3, annotated, 'dt');
+  assert.equal(rel, 'annotated/dt-03.jpg');
+  const fileOnDisk = await readFile(path.join(dir, rel));
+  assert.ok(isValidJpeg(fileOnDisk));
+});
+
