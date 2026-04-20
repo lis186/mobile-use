@@ -240,15 +240,16 @@ program
     process.exit(result.success ? 0 : 1);
   });
 
-// ── audit command (Phase 1: iOS 26 simulator only) ─────────────────
+// ── audit command ────────────────────────────────────────────────────
 program
   .command('audit')
-  .description('Autonomous UX audit of a mobile app (Phase 1: iOS 26 simulator only)')
+  .description('Autonomous UX audit of a mobile app (simulator via --runner xctest; real device via --runner wda)')
   .argument('<bundleId>', 'App bundle ID (e.g., com.apple.Preferences)')
-  .option('--runner <type>', 'Runner backend (Phase 1: xctest only)', 'xctest')
+  .option('--runner <type>', 'Runner backend: xctest (simulator, default) or wda (real device)', 'xctest')
   .option('--device <id>', 'Simulator device UDID (defaults to booted simulator)')
-  .option('--ios-device <udid>', '[Phase 2] Physical iOS device UDID — not supported in Phase 1')
-  .option('--team-id <id>', '[Phase 2] Apple Developer Team ID')
+  .option('--ios-device <udid>', 'Physical iOS device UDID (use with --runner wda)')
+  .option('--team-id <id>', 'Apple Developer Team ID (required for --runner wda)')
+  .option('--driver-port <port>', 'WDA host port (default: 8100)', '8100')
   .option('--xctestrun-path <path>', 'Path to .xctestrun file (optional, for xctest runner)')
   .option('--language <lang>', 'Device UI language (e.g., "zh-TW")')
   .option('--scope <area>', 'Focus the audit on a specific feature area (e.g., "checkout flow")')
@@ -281,25 +282,23 @@ program
 
 /**
  * Build a validated AuditConfig from raw CLI options.
- * Enforces Phase 1 scope (iOS 26 simulator only) and defaults.
  */
 function buildAuditConfig(bundleId: string, options: Record<string, unknown>): AuditConfig {
   if (!bundleId) {
     throw new Error('audit: bundleId is required. Usage: phone-use audit <bundleId>');
   }
 
-  // Phase 1 scope gate: reject physical device attempts with a clear hint.
-  if (options.iosDevice) {
+  const runner = (options.runner as RunnerType) ?? 'xctest';
+  if (runner !== 'xctest' && runner !== 'wda') {
     throw new AuditError(
       'E_DRIVER_NOT_READY',
-      'Physical device audit is a Phase 2 feature. Phase 1 targets iOS 26 simulator only. Run the audit against a booted simulator instead (drop --ios-device).',
+      `Runner "${runner}" is not supported for audit. Use --runner xctest (simulator) or --runner wda (real device).`,
     );
   }
-  const runner = (options.runner as RunnerType) ?? 'xctest';
-  if (runner !== 'xctest') {
+  if (runner === 'wda' && !options.iosDevice) {
     throw new AuditError(
       'E_DRIVER_NOT_READY',
-      `Runner "${runner}" is not supported in Phase 1. Audit mode targets iOS 26 simulator via --runner xctest only.`,
+      '--runner wda requires --ios-device <udid>. Example: phone-use audit <bundleId> --runner wda --ios-device <UDID> --team-id <TEAM_ID>',
     );
   }
 
@@ -329,10 +328,19 @@ function buildAuditConfig(bundleId: string, options: Record<string, unknown>): A
     ? path.resolve(process.cwd(), String(options.outputDir))
     : path.resolve(process.cwd(), `audit-output/${timestamp}-${bundleId}`);
 
+  const iosDevice = options.iosDevice
+    ? {
+        udid: options.iosDevice as string,
+        teamId: options.teamId as string | undefined,
+        driverPort: parseIntFlag(options.driverPort, 8100, '--driver-port', { min: 1, max: 65535 }),
+      }
+    : undefined;
+
   return {
     bundleId,
     runner,
     deviceId: options.device as string | undefined,
+    iosDevice,
     language: options.language as string | undefined,
     scope: options.scope as string | undefined,
     model: String(options.model ?? defaultModel),

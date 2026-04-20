@@ -120,9 +120,8 @@ export class AuditExecutor extends TaskExecutor {
     this.auditConfig = config;
     this.auditAgent = new AuditAgent(apiKey, config, provider);
 
-    // The parent constructor already built a driver for `maestro`. Replace
-    // it with one pinned to the audit config so the right runner branch is
-    // used (defensive — parent's selection should be identical for Phase 1).
+    // Parent constructor builds a driver; replace with one pinned to the audit
+    // config to be explicit (xctest for simulator, wda for real device).
     this.maestro = buildDriverFromTaskConfig(taskStub);
   }
 
