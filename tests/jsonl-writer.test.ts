@@ -124,3 +124,16 @@ test('readJsonl: drops malformed lines but keeps valid ones', async (t) => {
 // Removed: "creates parent directory if it does not exist" test.
 // ensureDir was removed from append functions — callers (AuditExecutor.initOutputDir)
 // must create the output directory before the first append.
+
+test('appendIssue: writes to a custom filename when specified', async (t) => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'jsonl-test-'));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+
+  await appendIssue(dir, makeIssue('DT-001'), 'a11y-issues.jsonl');
+
+  const dtIssues = await readJsonl<AuditIssue>(path.join(dir, 'a11y-issues.jsonl'));
+  const mainIssues = await readJsonl<AuditIssue>(path.join(dir, 'issues.jsonl'));
+  assert.equal(dtIssues.length, 1);
+  assert.equal(dtIssues[0]?.id, 'DT-001');
+  assert.equal(mainIssues.length, 0);
+});

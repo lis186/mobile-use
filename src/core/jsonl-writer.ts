@@ -20,10 +20,10 @@ export async function appendStep(outputDir: string, record: StepRecord): Promise
   await appendFile(path.join(outputDir, 'steps.jsonl'), line, 'utf-8');
 }
 
-/** Append a single issue record to issues.jsonl in the output directory. */
-export async function appendIssue(outputDir: string, issue: AuditIssue): Promise<void> {
+/** Append a single issue record to `filename` (default `issues.jsonl`) in the output directory. */
+export async function appendIssue(outputDir: string, issue: AuditIssue, filename = 'issues.jsonl'): Promise<void> {
   const line = JSON.stringify(issue) + '\n';
-  await appendFile(path.join(outputDir, 'issues.jsonl'), line, 'utf-8');
+  await appendFile(path.join(outputDir, filename), line, 'utf-8');
 }
 
 /**

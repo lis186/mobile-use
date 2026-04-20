@@ -96,7 +96,7 @@ export class AuditAgent extends TaskAgent {
    * Throws AuditError on hard failures; returns AuditStepResult on success
    * (including the degraded fallback path).
    */
-  async decideAudit(ctx: AuditAgentContext): Promise<AuditStepResult> {
+  async decideAudit(ctx: AuditAgentContext, mode: 'standard' | 'accessibility' = 'standard'): Promise<AuditStepResult> {
     // Parse the tree ONCE per step and flow it through both buildUserContent
     // (for the prompt tree block) and toStepResult (so the executor can reuse
     // it for fingerprinting and nav-target extraction). Previously this was
@@ -105,7 +105,7 @@ export class AuditAgent extends TaskAgent {
       ? parseAccessibilityTreeDetailed(ctx.accessibilityTree)
       : null;
 
-    const systemPrompt = this.buildAuditSystemPrompt();
+    const systemPrompt = this.buildAuditSystemPrompt(mode);
     const userContent = await this.buildUserContent(ctx, parsedTree);
 
     await this.rateLimiter.acquire();
@@ -345,17 +345,26 @@ STRATEGY: Visit unvisited areas FIRST. Do not re-enter an already-visited screen
   }
 
   /** Full audit-mode system prompt: Norman/Nielsen + HIG anchoring + anti-patterns + GOOD/BAD examples. */
-  private buildAuditSystemPrompt(): string {
+  private buildAuditSystemPrompt(mode: 'standard' | 'accessibility' = 'standard'): string {
     const lang = this.auditConfig.language
       ? `\nLANGUAGE: The app UI is in ${this.auditConfig.language}. Use exact visible text for tapText actions.\n`
       : '';
 
-    return `You are an autonomous mobile UX auditor. Your job is to explore a mobile app AND assess its UX on every screen you visit.
+    const goal = mode === 'accessibility'
+      ? `DYNAMIC TYPE PASS: The app is running at accessibility-extra-large Dynamic Type size.
+${lang}
+ON EVERY STEP YOU MUST:
+1. Decide the next navigation action (prefer visiting screens you saw in the standard pass)
+2. Report ONLY issues caused BY large text: truncated labels, overlapping elements, layout breakage, fixed-height containers that clip content
+3. Do NOT re-report general UX issues already covered in the standard pass`
+      : `You are an autonomous mobile UX auditor. Your job is to explore a mobile app AND assess its UX on every screen you visit.
 ${lang}
 ON EVERY STEP YOU MUST:
 1. Decide the next navigation action to advance exploration
 2. Report ONLY real UX issues on the current screen (omit the audit block if none)
-3. Tag onboarding/tutorial screens so they can be excluded from coverage
+3. Tag onboarding/tutorial screens so they can be excluded from coverage`;
+
+    return `${goal}
 
 == UX ANALYSIS FRAMEWORK ==
 Apply Don Norman's principles (Affordance, Signifier, Feedback, Mapping, Constraints) and Jakob Nielsen's heuristics (Visibility of system status, Recognition over recall, Error prevention, Consistency, User control).

@@ -47,15 +47,16 @@ export async function annotateScreenshot(
     .toBuffer();
 }
 
-/** Persist an annotated JPEG to `annotated/step-NN.jpg` under the output dir. */
+/** Persist an annotated JPEG to `annotated/<prefix>-NN.jpg` under the output dir. */
 export async function writeAnnotated(
   outputDir: string,
   stepNumber: number,
   annotatedBuffer: Buffer,
+  filenamePrefix = 'step',
 ): Promise<string> {
   const dir = path.join(outputDir, 'annotated');
   await mkdir(dir, { recursive: true });
-  const name = stepFileName(stepNumber);
+  const name = `${filenamePrefix}-${String(stepNumber).padStart(2, '0')}.jpg`;
   await writeFile(path.join(dir, name), annotatedBuffer);
   return `annotated/${name}`;
 }
@@ -222,4 +223,9 @@ function escapeXml(s: string): string {
 /** Canonical step-screenshot filename so the writer and the report renderer stay in sync. */
 export function stepFileName(n: number): string {
   return `step-${String(n).padStart(2, '0')}.jpg`;
+}
+
+/** Filename for Dynamic Type pass annotated frames. */
+export function dtStepFileName(n: number): string {
+  return `dt-${String(n).padStart(2, '0')}.jpg`;
 }

@@ -74,6 +74,7 @@ function makeData(overrides: Partial<AuditReportData> = {}): AuditReportData {
     issues,
     timings,
     summary: overrides.summary ?? summarize(timings, 'gemini-2.5-flash'),
+    dtIssues: overrides.dtIssues,
   };
 }
 
@@ -344,4 +345,25 @@ test('renderReport returns a non-empty string for empty-ish input', () => {
   });
   assert.ok(md.length > 0);
   assert.match(md, /# UX Audit Report/);
+});
+
+// ── Dynamic Type findings ─────────────────────────────────────
+
+test('DT section appears when dtIssues are provided', () => {
+  const dtIssues = [makeIssue('DT-001', { title: 'Label truncated at large text' })];
+  const md = renderReport(makeData({ dtIssues }));
+  assert.match(md, /## Dynamic Type Findings/);
+  assert.match(md, /accessibility-extra-large/);
+  assert.match(md, /DT-001/);
+  assert.match(md, /Label truncated at large text/);
+});
+
+test('DT section is absent when dtIssues is undefined', () => {
+  const md = renderReport(makeData());
+  assert.ok(!md.includes('## Dynamic Type Findings'), 'section must not appear without dtIssues');
+});
+
+test('DT section is absent when dtIssues is empty', () => {
+  const md = renderReport(makeData({ dtIssues: [] }));
+  assert.ok(!md.includes('## Dynamic Type Findings'), 'section must not appear for empty dtIssues');
 });

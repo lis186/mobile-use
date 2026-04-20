@@ -674,15 +674,12 @@ Use this after any group is finished. The `openspec status --change "add-mobile-
 
 | ID | Status | Notes |
 |----|--------|-------|
-| M1 Dynamic Type pass | Not started | `--accessibility-pass` flag; restart audit at large text size |
+| M1 Dynamic Type pass | ✅ DONE (Phase 3) | `--accessibility-pass` flag; `accessibility-extra-large`; dogfood: 3 DT issues found on Settings |
 | L2 Physical device support | Not started | iOS 26 WDA driver validation; Decision 20 Phase 2 |
 | L3 AI SDK v6 migration | Not started | `generateObject` deprecation warnings; deferred until SDK ships replacement with vision guarantees |
 
 ### Next obvious steps
 
-1. **Dogfood Sprint 2** — run a 25-step Settings audit with the new code and verify:
-   - Flow loop escape fires at least once in a longer run (Maps or Safari audit are better candidates)
-   - Deep Navigation section appears for Settings (deep settings paths exist > 4 taps)
-   - At least one contrast issue triggers pixel sampling (look for "Measured contrast ratio" in report)
-2. **M1 Dynamic Type pass** — `--accessibility-pass` flag that relaunches audit with large Dynamic Type enabled and compares layouts. ~100 LOC in executor + new CLI flag.
-3. **PR for Sprint 2** — `phase2-sprint2` → `main`.
+1. **PR for Phase 3** — current `main` branch → PR. Commits since Sprint 2 merge include M1 DT pass.
+2. **L2 Physical device support** — next sprint target.
+3. **L3 AI SDK v6 migration** — when SDK ships structured-output + vision replacement for `generateObject`.

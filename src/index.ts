@@ -263,6 +263,7 @@ program
   .option('--hard-timeout <ms>', 'Hard per-step timeout for a single AI call', '45000')
   .option('--live', 'Open a local live viewer in the browser while the audit runs', false)
   .option('--live-port <port>', 'Port for the --live viewer HTTP server', '7330')
+  .option('--accessibility-pass', 'Run a second pass at accessibility-extra-large Dynamic Type size after the main audit', false)
   .action(async (bundleIdArg: string, options: Record<string, unknown>) => {
     try {
       const config = buildAuditConfig(bundleIdArg, options);
@@ -345,6 +346,7 @@ function buildAuditConfig(bundleId: string, options: Record<string, unknown>): A
     skipLaunch: Boolean(options.skipLaunch),
     live: Boolean(options.live),
     livePort,
+    accessibilityPass: Boolean(options.accessibilityPass),
   };
 }
 
