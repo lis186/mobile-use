@@ -23,11 +23,11 @@ AI-powered mobile task automation. Natural language → screenshot → AI decisi
 | Command | Input | Use when |
 |---------|-------|----------|
 | `phone-use run <bundleId> <task>` | a specific, goal-oriented task in natural language | you know exactly what you want the phone to do (send a message, fill a form, book a seat). Conversation-history-aware agent; best for ≤ 100-step tasks with a clear end condition. |
-| `phone-use audit <bundleId>` | **no task** — just a bundle id (and optionally `--scope`) | you want the agent to explore the app on its own and emit a Markdown UX audit with annotated screenshots. Stateless, Norman/Nielsen/HIG-grounded, produces `report.md` + `annotated/step-NN.jpg`. Phase 1: iOS 26 simulator only. |
+| `phone-use audit <bundleId>` | **no task** — just a bundle id (and optionally `--scope`) | you want the agent to explore the app on its own and emit a Markdown UX audit with annotated screenshots. Stateless, Norman/Nielsen/HIG-grounded, produces `report.md` + `annotated/step-NN.jpg`. Supports iOS 26 simulator (`--runner xctest`) and real devices (`--runner wda`). |
 
-**Known limitations** (Phase 1):
-- `phone-use audit` is simulator-only (`--runner xctest` on iOS 26). Physical device audit is a Phase 2 feature because no iOS 26 physical-device driver currently exists; see `openspec/changes/add-mobile-ux-audit/design.md` Decision 20.
+**Known limitations**:
 - Audit mode assumes Gemini 2.5 Flash as the default vision model. Free-tier quota (both RPM and RPD) will throttle or block long runs — see `openspec/changes/add-mobile-ux-audit/handoff.md` §4 for the latest observed behaviour and recommended `--rpm-limit` / `--max-retries` settings.
+- For real device audit: WDA must already be running (see WDA Runner section below). Pass `--runner wda --ios-device <UDID> --team-id <TEAM_ID>`.
 - Run mode (`phone-use run`) is unchanged by the audit work: `src/agent.ts` and `src/executor.ts` only received visibility bumps (`private → protected`) and a shared driver-build helper. No behavioural change. See `openspec/changes/add-mobile-ux-audit/handoff.md` §8.4.
 
 ## Build & Run
