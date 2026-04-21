@@ -265,6 +265,8 @@ program
   .option('--live', 'Open a local live viewer in the browser while the audit runs', false)
   .option('--live-port <port>', 'Port for the --live viewer HTTP server', '7330')
   .option('--accessibility-pass', 'Run a second pass at accessibility-extra-large Dynamic Type size after the main audit', false)
+  .option('--subtree-depth-threshold <n>', 'Depth beyond which a step counts as "deep" for the subtree breadth guard', '3')
+  .option('--max-subtree-depth-steps <n>', 'Consecutive deep steps before forcing a relaunch to restore breadth', '10')
   .action(async (bundleIdArg: string, options: Record<string, unknown>) => {
     try {
       const config = buildAuditConfig(bundleIdArg, options);
@@ -318,6 +320,8 @@ function buildAuditConfig(bundleId: string, options: Record<string, unknown>): A
   const tokenBudget = parseIntFlag(options.tokenBudget, 200_000, '--token-budget', { min: 1 });
   const hardTimeout = parseIntFlag(options.hardTimeout, 45_000, '--hard-timeout', { min: 1000 });
   const livePort = parseIntFlag(options.livePort, 7330, '--live-port', { min: 1, max: 65535 });
+  const subtreeDepthThreshold = parseIntFlag(options.subtreeDepthThreshold, 3, '--subtree-depth-threshold', { min: 0 });
+  const maxSubtreeDepthSteps = parseIntFlag(options.maxSubtreeDepthSteps, 10, '--max-subtree-depth-steps', { min: 1 });
 
   // API key resolution reuses the run-command helper, which exits the process
   // with a formatted error on failure — that gives us the same UX as `run`.
@@ -355,6 +359,8 @@ function buildAuditConfig(bundleId: string, options: Record<string, unknown>): A
     live: Boolean(options.live),
     livePort,
     accessibilityPass: Boolean(options.accessibilityPass),
+    subtreeDepthThreshold,
+    maxSubtreeDepthSteps,
   };
 }
 

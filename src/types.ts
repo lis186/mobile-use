@@ -108,6 +108,8 @@ export interface AuditConfig {
   live: boolean;
   livePort: number;
   accessibilityPass: boolean;
+  subtreeDepthThreshold?: number;
+  maxSubtreeDepthSteps?: number;
 }
 
 /** A single UX issue discovered during an audit step */

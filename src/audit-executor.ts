@@ -39,6 +39,7 @@ import { summarize } from './core/step-timing.js';
 import { finalizeReport } from './audit-report.js';
 import type { LiveViewer } from './core/live-viewer.js';
 import type {
+  AgentDecision,
   AuditConfig,
   TaskConfig,
   StepTiming,
@@ -62,6 +63,8 @@ const STABLE_POLL_INTERVAL_MS = 250;
 const LOCK_DIR = '/tmp';
 const MAX_CONSECUTIVE_SWIPES = 4;
 const MAX_OVEREXPLORED_VISITS = 4;
+const MAX_SUBTREE_DEPTH = 3;
+const MAX_CONSECUTIVE_DEEP_STEPS = 10;
 
 export type AuditPartialReason = AuditErrorCode | 'E_UNEXPECTED';
 
@@ -80,6 +83,11 @@ export class AuditExecutor extends TaskExecutor {
   private unvisitedTargets: string[] = [];
   private readonly recentActions: string[] = [];
   private consecutiveSwipes = 0;
+  // E1 breadth guard: catches linear descent through unique-but-fruitless
+  // screens that repetition guards (P3/M2/P4) miss because every step lands
+  // on a new fingerprint.
+  private subtreeDepth = 0;
+  private consecutiveDeepSteps = 0;
   private readonly timings: StepTiming[] = [];
   private issueCounter = 0;
   private lockPath: string | null = null;
@@ -304,6 +312,7 @@ export class AuditExecutor extends TaskExecutor {
               } catch { /* best effort */ }
             }
             this.recentActions.push('back (scope guard)');
+            this.resetStuckCounters();
             continue;
           }
         }
@@ -481,6 +490,7 @@ export class AuditExecutor extends TaskExecutor {
             sleep_ms: 0,
             total_ms: Math.round(performance.now() - t0),
           }, 'back (flow loop escape)');
+          this.resetStuckCounters();
           continue;
         }
         this.visitedFlows.add(flowKey);
@@ -513,19 +523,60 @@ export class AuditExecutor extends TaskExecutor {
         this.recentActions.push(
           `STUCK: relaunched app after same screen seen ${visitCount}× — resuming exploration from home`,
         );
-        this.consecutiveSwipes = 0;
+        this.resetStuckCounters();
+        continue;
+      }
+
+      // ── E1: Subtree breadth guard ──────────────────────────
+      const maxDeepSteps = this.auditConfig.maxSubtreeDepthSteps ?? MAX_CONSECUTIVE_DEEP_STEPS;
+      if (this.consecutiveDeepSteps >= maxDeepSteps) {
+        console.log(
+          pc.yellow(
+            `  ⚠️  Subtree trap: ${this.consecutiveDeepSteps} consecutive deep steps — relaunching app to restore breadth`,
+          ),
+        );
+        try {
+          await this.executeAction({
+            action: 'launchApp',
+            params: { appId: this.auditConfig.bundleId },
+            reasoning: `subtree trap escape: ${this.consecutiveDeepSteps} consecutive deep steps`,
+            progress: 0,
+          });
+          await this.waitForScreenStable(this.auditConfig.stableTimeout, STABLE_POLL_INTERVAL_MS);
+        } catch (err) {
+          console.log(pc.yellow(`  ⚠️  Subtree relaunch failed: ${(err as Error).message}`));
+        }
+        this.recentActions.push(
+          `STUCK: relaunched app after ${this.consecutiveDeepSteps} consecutive deep steps in a subtree — explore a different top-level section`,
+        );
+        await this.recordStep(step, fingerprint, screenName, result, persistedIssues, {
+          screenshot_ms: Math.round(t1 - t0),
+          tree_ms: 0,
+          ai_ms: Math.round(t2 - t1),
+          action_ms: 0,
+          sleep_ms: 0,
+          total_ms: Math.round(performance.now() - t0),
+        }, 'launchApp (subtree trap escape)');
+        this.resetStuckCounters();
         continue;
       }
 
       // ── Execute the action ──────────────────────────────────
       const t3 = performance.now();
       const isSwipe = result.navigation.action === 'swipe' || result.navigation.action === 'scroll';
+      let actionSucceeded = false;
       try {
         await this.executeAction(result.navigation);
         this.recentActions.push(this.formatAction(result.navigation));
+        actionSucceeded = true;
       } catch (err) {
         console.log(pc.yellow(`  ⚠️  action failed: ${(err as Error).message}`));
         this.recentActions.push('error');
+      }
+
+      // Gate on success: a failed tap never navigated, so counting it would falsely trip E1.
+      if (actionSucceeded) {
+        this.updateSubtreeDepth(result.navigation.action, result.onboardingDetected);
       }
 
       // ── Stuck detection: escape paginated content ──────────
@@ -537,7 +588,7 @@ export class AuditExecutor extends TaskExecutor {
             await this.executeAction({ action: 'back', params: {}, reasoning: 'stuck escape', progress: 0 });
           } catch { /* best effort */ }
           this.recentActions.push(`STUCK: forced back after ${this.consecutiveSwipes} consecutive swipes in paginated content — explore a different section`);
-          this.consecutiveSwipes = 0;
+          this.resetStuckCounters();
         }
       } else {
         this.consecutiveSwipes = 0;
@@ -649,6 +700,33 @@ export class AuditExecutor extends TaskExecutor {
     // (Application root, at least one child). Empty / undefined = target app
     // likely not in foreground.
     return !tree || tree.trim().length < 10;
+  }
+
+  // ── Stuck-detection helpers ──────────────────────────────────
+
+  /** Called from every escape path before its `continue` so two guards never double-fire on the same stuck pattern. */
+  private resetStuckCounters(): void {
+    this.subtreeDepth = 0;
+    this.consecutiveDeepSteps = 0;
+    this.consecutiveSwipes = 0;
+  }
+
+  /** Onboarding nav is excluded so skip-taps on the welcome flow don't poison the counter before the real audit begins. */
+  private updateSubtreeDepth(action: AgentDecision['action'], isOnboarding: boolean): void {
+    if (action === 'launchApp') {
+      this.subtreeDepth = 0;
+    } else if (action === 'back') {
+      this.subtreeDepth = Math.max(0, this.subtreeDepth - 1);
+    } else if (!isOnboarding && NAVIGATION_ACTIONS.has(action)) {
+      this.subtreeDepth++;
+    }
+
+    const threshold = this.auditConfig.subtreeDepthThreshold ?? MAX_SUBTREE_DEPTH;
+    if (this.subtreeDepth > threshold) {
+      this.consecutiveDeepSteps++;
+    } else {
+      this.consecutiveDeepSteps = 0;
+    }
   }
 
   // ── Visited map + nav target tracking ────────────────────────
