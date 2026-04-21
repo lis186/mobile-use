@@ -202,7 +202,7 @@ Deprecation warnings are currently suppressed. When AI SDK ships the replacement
 | L1 | Low | ~60 LOC | Nice-to-have precision | Sprint 2 | ✅ DONE |
 | L2 | Low | large | Phase 2 feature | Sprint 3 | ✅ DONE |
 | L3 | Low | medium | Tech debt | Sprint 3 | ⏳ waiting on AI SDK v6 |
-| E1 | Medium | ~60 LOC | Prevents step-budget waste from subtree trap | Post-Phase-4 | ⏳ designed, not yet implemented |
+| E1 | Medium | ~60 LOC | Prevents step-budget waste from subtree trap | Post-Phase-4 | ✅ DONE (`8ff2ab9`) |
 
 **Sprint 1 total**: ~275 LOC across prompt, schema, executor, and dedup. High ROI — transforms the report from "automated noise + correct terminology" (2/10) to "useful first-pass screening tool" (target: 6-7/10).
 
@@ -210,9 +210,9 @@ Deprecation warnings are currently suppressed. When AI SDK ships the replacement
 
 ## Post-Phase-4 — Exploration Breadth
 
-### E1. Subtree breadth guard — ⏳ DESIGNED, NOT YET IMPLEMENTED
+### E1. Subtree breadth guard — ✅ DONE (`8ff2ab9`, 2026-04-21)
 
-> Source: Phase 4 dogfood observation (2026-04-21). Pre-mortem completed before implementation.
+> Source: Phase 4 dogfood observation (2026-04-21). Pre-mortem completed before implementation. Codex review caught a missing `resetStuckCounters()` on the WDA scope-drift escape path; fixed in the same commit.
 
 **Problem**: The Phase 4 real-device dogfood (Settings, 25 steps) showed the agent spending 15+ steps in the Apple Account → Personal Information subtree without reaching top-level sections (Wi-Fi, Privacy). The flow loop guard (3-fingerprint cycle) fired once at step 8 but the subtree had enough unique fingerprints that the same 3-tuple never repeated. No other stuck mechanism caught it.
 
