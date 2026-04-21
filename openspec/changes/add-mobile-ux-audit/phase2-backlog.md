@@ -1,7 +1,7 @@
-# Phase 2 Backlog — UX Audit Report Quality
+# Audit Feature Backlog
 
-> Source: Codex devil's advocate review of Phase 1 dogfood reports (2026-04-13).
-> Phase 1 delivered the end-to-end pipeline. Phase 2 focuses on **output quality**.
+> Canonical backlog for `phone-use audit`. Covers Phase 2 (report quality), post-Phase-2 exploration improvements, open bugs, sprint records, and operational notes.
+> Phase 1 delivered the end-to-end pipeline. Phase 2 focused on **output quality**. All Phase 2 items ✅ except L3 (upstream-blocked) and E1 (designed, pending implementation).
 
 ---
 
@@ -202,5 +202,178 @@ Deprecation warnings are currently suppressed. When AI SDK ships the replacement
 | L1 | Low | ~60 LOC | Nice-to-have precision | Sprint 2 | ✅ DONE |
 | L2 | Low | large | Phase 2 feature | Sprint 3 | ✅ DONE |
 | L3 | Low | medium | Tech debt | Sprint 3 | ⏳ waiting on AI SDK v6 |
+| E1 | Medium | ~60 LOC | Prevents step-budget waste from subtree trap | Post-Phase-4 | ⏳ designed, not yet implemented |
 
 **Sprint 1 total**: ~275 LOC across prompt, schema, executor, and dedup. High ROI — transforms the report from "automated noise + correct terminology" (2/10) to "useful first-pass screening tool" (target: 6-7/10).
+
+---
+
+## Post-Phase-4 — Exploration Breadth
+
+### E1. Subtree breadth guard — ⏳ DESIGNED, NOT YET IMPLEMENTED
+
+> Source: Phase 4 dogfood observation (2026-04-21). Pre-mortem completed before implementation.
+
+**Problem**: The Phase 4 real-device dogfood (Settings, 25 steps) showed the agent spending 15+ steps in the Apple Account → Personal Information subtree without reaching top-level sections (Wi-Fi, Privacy). The flow loop guard (3-fingerprint cycle) fired once at step 8 but the subtree had enough unique fingerprints that the same 3-tuple never repeated. No other stuck mechanism caught it.
+
+**Why it matters**: With a 25-step budget, 15 steps in one subtree = 60% budget wasted on a section with zero UX issues. Breadth coverage is the primary value driver for a general-purpose auditor.
+
+**Root cause**: All existing stuck guards (P3 consecutive swipes, M2 flow loop, P4 overexplored screen) detect *repetition*. They do not detect *linear descent into unexplored but fruitless territory* — the agent was seeing new fingerprints every step, so nothing triggered.
+
+**Fix direction**:
+
+Add a `subtreeDepth` counter and `consecutiveDeepSteps` counter to `AuditExecutor`. `subtreeDepth` tracks how many levels below the app root the agent currently is, based on executed navigation actions. `consecutiveDeepSteps` counts how many consecutive steps have been at depth > `MAX_SUBTREE_DEPTH`. When `consecutiveDeepSteps >= MAX_CONSECUTIVE_DEEP_STEPS`, force `launchApp` to return to root.
+
+**Pre-mortem findings and approved solutions** (all scored ≥ 9/10):
+
+| Risk | Solution | Score |
+|------|----------|-------|
+| P4 relaunch + subtree trap double-fire | `resetStuckCounters()` helper called by ALL escape paths | 9/10 |
+| Failed action inflates depth | `actionSucceeded` flag; `updateSubtreeDepth()` only called on success | 10/10 |
+| Threshold 8 too aggressive for legitimate deep apps | Default `10`, exposed as `--max-subtree-depth-steps <n>` CLI flag | 10/10 |
+| Onboarding taps inflate initial depth | `updateSubtreeDepth(action, isOnboarding)` — onboarding steps don't increment | 10/10 |
+| depth threshold `3` hardcoded | Default `3`, exposed as `--subtree-depth-threshold <n>` CLI flag | 10/10 |
+| Agent re-enters same subtree after launchApp | Accepted tradeoff — visited map prevents re-auditing; breadth improves over multiple cycles | — |
+
+**Implementation plan** (single file: `src/audit-executor.ts` + `src/types.ts` + `src/index.ts`):
+
+1. Add constants: `MAX_SUBTREE_DEPTH` (default 3), `MAX_CONSECUTIVE_DEEP_STEPS` (default 10)
+2. Add fields: `subtreeDepth: number`, `consecutiveDeepSteps: number`
+3. Extract `resetStuckCounters()` — sets all three swipe/depth/consecutive counters to 0; call at every `continue` in every escape path (P3, flow loop, P4, new subtree trap)
+4. Extract `updateSubtreeDepth(action, isOnboarding)` — `launchApp` resets to 0, `back` decrements (min 0), other nav actions increment if `!isOnboarding`; recomputes `consecutiveDeepSteps`
+5. Add subtree trap check block (after P4, before executeAction): if `consecutiveDeepSteps >= MAX_CONSECUTIVE_DEEP_STEPS`, force launchApp, call `resetStuckCounters()`, inject STUCK message, `continue`
+6. Call `updateSubtreeDepth` only when `actionSucceeded === true`
+7. Add `maxSubtreeDepthSteps?: number` and `subtreeDepthThreshold?: number` to `AuditConfig` in `types.ts`
+8. Wire CLI flags `--max-subtree-depth-steps` and `--subtree-depth-threshold` in `src/index.ts`
+
+**Estimated effort**: ~60 LOC across three files.
+
+---
+
+## Open Bugs
+
+### BUG-A · `xctest.ts` tapText fails on curly apostrophe — ⏳ OPEN
+
+**Observed**: `tapText("Don't have an Apple Account?")` → `[XCTest] Element not found`.
+
+**Cause**: Element on screen uses typographic `'` (U+2019); element's stored accessibility label uses ASCII `'` (U+0027) or vice versa. XCTest element search is exact-match by default.
+
+**Fix location**: `src/xctest.ts` tapText element lookup — add NFKC normalization and try both `'` ↔ `'` fallbacks before failing.
+
+**Severity**: Medium. Only affects text-tap actions whose target has smart punctuation. Audit loop handles it gracefully (fail-silent, continues), so report quality is not affected — but missed taps waste steps.
+
+---
+
+## Sprint Records
+
+### Sprint 1 — Report Quality Fixes (2026-04-13)
+
+**Branch**: `phase2-sprint1` → merged to `main`
+**Goal**: Report quality 2/10 → 6-7/10
+
+| ID | Fix | Commits |
+|----|-----|---------|
+| C1 | Real frame dimensions in tree output | `397f74f` |
+| C2 | `cognitiveImpact` field + GOOD/BAD examples | `c524072` |
+| C3 | Scope guard (cross-app drift detection) | `683eaef`, `755a743` |
+| H1 | Three-pass dedup (exact → fuzzy → cross-screen) | `b57718f`, `76f977e` |
+| H2 | Anti-patterns (modal, chrome, back button, font specimen) | `4cccd00`, `57d937f` |
+| H3 | Severity calibration rubric | `b2cedf2` |
+| P1 | Font specimen triple-layer defense | `38115c2` |
+| P3 | Consecutive swipe escape heuristic | `d31ec6f` |
+| P4+P5 | Per-fingerprint relaunch escalation + step budget estimation | `c579c0b` |
+
+**Dogfood progression** (Settings, 25 steps, xctest simulator):
+
+| Run | Issues | FP rate | Key finding |
+|-----|--------|---------|-------------|
+| v1 (pre-fix) | 4 | 75% | Flagging iOS standard elements |
+| v2 (C1–H3) | 13 | 77% | 8 duplicate font contrast issues |
+| v3 (+ P1) | 5 | 80% | Font preview still leaking through |
+| v4 (+ P1 triple-layer) | 0 | 0% | Agent trapped in font subtree, no escape |
+| V1 final (+ P4+P5) | 2 | 0% | 14 unique screens, flow guard working |
+
+**Key design decisions from pre-mortem**:
+- Relaunch over back: subtree escape must go to app root, not one level up
+- Step estimation at step 1 before committing to audit path
+- Overview/deep-dive mode deferred (scope creep risk)
+- Deterministic replay deferred (path fragility risk)
+
+---
+
+### Sprint 2 — Exploration Quality + Structural Findings (2026-04-19)
+
+**Branch**: `phase2-sprint2` → merged to `main`
+**Tests**: 118/118
+
+| ID | Fix | Commits | Key change |
+|----|-----|---------|------------|
+| M2 | Flow-level 3-fingerprint cycle detection | `3e51e60`, `512eee5` | `flowHistory[]` + `visitedFlows Set` in executor |
+| M1 | IA depth analysis — flags screens > 4 taps deep | `36b360d`, `87f734a` | `buildDepthMap()` + `renderDepthFindings()` in report |
+| L1 | WCAG 2.1 contrast ratio via pixel sampling | `e11caf9` | `src/core/contrast.ts` new; p12.5/p87.5 anchor sampling |
+
+**M1 depth tracking** (relevant to E1 design): `buildDepthMap` in `audit-report.ts` does a single pass — increment on forward nav, decrement on `back`, reset on `launchApp`. This is the same model used for the new E1 runtime counter.
+
+---
+
+### Phase 3 — Dynamic Type Pass (2026-04-20)
+
+**Branch**: `phase3-m1-dt-pass` → merged (`1ad60d5`)
+
+Added `--accessibility-pass` flag: reruns the full audit at `accessibility-extra-large` text size to catch truncation issues invisible at default size. Dogfood on Settings found 3 Dynamic Type issues (label truncation in Wi-Fi detail views).
+
+---
+
+### Phase 4 — Physical Device Support (2026-04-21)
+
+**Branch**: `phase4-l2-physical-device` → merged (`1d46319`)
+
+Removed Phase 1 simulator-only gate. `--runner wda --ios-device <UDID> --team-id <ID>` now fully supported.
+
+**WDA first-launch note**: `xcodebuild test-without-building` fails on first install (entitlement error). Use `xcodebuild test` for the first launch, then `test-without-building` for subsequent runs. See `CLAUDE.md` for the full startup sequence.
+
+**Dogfood** (Settings, 25 steps, real iPhone iOS 26.3.1):
+
+| Metric | Value |
+|--------|-------|
+| Steps | 24 (1 onboarding excluded) |
+| Unique screens | 11 |
+| Issues | 5 (3 Medium, 2 Low) |
+| Cost | $0.0126 |
+| Wall-clock | 6 min 21 s |
+| Flow loop triggered | Step 8 ✅ |
+| Scope drift guard triggered | Step 21 ✅ |
+
+**Observed limitation** (→ source of E1): agent spent 15+ steps in Apple Account subtree, never reached Wi-Fi/Privacy. Flow loop fired once at step 8 but the subtree had new unique fingerprints every step, so the 3-tuple check didn't re-trigger.
+
+---
+
+## Operational Notes
+
+### Gemini free-tier quota
+
+The blocker is the **daily request (RPD)** budget, not RPM. Three runs exhausted the daily budget in one session regardless of `--rpm-limit`. Key evidence: attempt 23 minutes after the previous run still failed on the first call — ruling out any per-minute explanation.
+
+- Safe settings for a fresh daily budget: `--rpm-limit 5 --max-retries 0`
+- A 25-step run is ~25 calls; fits under free-tier RPD most days if it's the only run
+- Do not retry with lower RPM once the daily bucket is gone — it does not help
+- Daily quota resets at UTC midnight
+- Paid Gemini tier or `gemini-2.5-flash-lite` (separate bucket, untested) as alternatives
+
+### Performance baselines (xctest simulator, gemini-2.5-flash)
+
+From Phase 1 smoke test (2026-04-11, 5 steps):
+
+| Metric | Value |
+|--------|-------|
+| AI latency p50 | 5.35 s |
+| AI latency p95 | 6.74 s |
+| Screenshot p50 | 330 ms |
+| Total step p50 | 7.43 s |
+| Cost per 25-step run | ~$0.006–$0.013 |
+
+Real device (WDA, Phase 4 dogfood): 24 steps in 6 min 21 s (~16 s/step including rate-limiter pacing).
+
+### Live viewer (Group 14A)
+
+`--live` flag infrastructure exists in the codebase (`LiveViewer` import + opt-in branch in executor). The actual `src/core/live-viewer.ts` implementation is **not built**. The flag is documented but silently no-ops if the module is missing. This is intentional — Phase 1 shipped annotation-always, live-viewer-opt-in (Decision 18). Build when there's demand.
