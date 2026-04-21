@@ -102,43 +102,36 @@
 
 ## Medium — Quality-of-life improvements
 
-### M1. False negative blind spots (structural)
+### M1. False negative blind spots (structural) — ✅ DONE (Sprint 2)
+
+> Implemented: IA depth analysis in report (`36b360d`), Dynamic Type pass via `--accessibility-pass` (`2921705`). VoiceOver deferred to Phase 3 (requires automation bridge).
 
 The vision model fundamentally cannot assess:
-- **VoiceOver / Rotor focus order** — requires running VoiceOver, not just reading the tree
-- **Dynamic Type truncation** — requires switching to large text sizes
-- **Animation timing / gesture cancellation** — requires temporal analysis across frames
-- **Information architecture depth** — requires a graph-level view of the screen map, not per-screen analysis
-- **Cross-screen state consistency** — requires memory the stateless agent doesn't have
+- **VoiceOver / Rotor focus order** — Phase 3, requires VoiceOver automation bridge
+- **Dynamic Type truncation** — ✅ `--accessibility-pass` flag reruns audit at XL text size
+- **Animation timing / gesture cancellation** — out of scope
+- **Information architecture depth** — ✅ post-run graph analysis flags screens > 4 taps deep
+- **Cross-screen state consistency** — out of scope for stateless agent
 
-**Fix direction (incremental)**:
-- IA depth: after the run, analyze the screen map graph (already captured) and flag screens > 4 taps deep with no shortcut.
-- Dynamic Type: add a `--accessibility-pass` flag that restarts the audit with large text enabled and compares layouts.
-- VoiceOver: Phase 3 — requires a VoiceOver automation bridge that doesn't exist yet.
+### M2. Exploration efficiency — ✅ DONE (Sprint 2)
 
-### M2. Exploration efficiency — ⏳ PARTIAL (Sprint 1)
-
-> Partial fix: consecutive swipe escape (`d31ec6f`), specimen screen filter (`38115c2`), subtree relaunch escalation + step budget estimation (`c579c0b`). Remaining: flow-level dedup (track 3-step sequence patterns) — Sprint 2.
+> Implemented: flow-level 3-screen fingerprint cycle detection (`3e51e60`). Complements P3 (consecutive swipe escape), P4 (per-fingerprint relaunch). Commit: `3e51e60`.
 
 Agent gets stuck in loops (Maps "Add to List" cycle, Safari customization loop). The visited-screen fingerprint doesn't prevent re-entering the same flow from a different entry point.
 
-**Fix direction**:
-- Track visited **flows** (sequence of 3+ screen fingerprints) in addition to individual screens.
-- If the current 3-step sequence matches a previously seen flow, force a `back()` instead of continuing.
-
-**Estimated effort**: ~50 LOC in audit-executor.ts.
+**Fix**: `flowHistory` (last 3 fingerprints) + `visitedFlows` Set. If the current 3-screen sequence has been seen before, force `back()` and inject STUCK message. In `audit-executor.ts`.
 
 ---
 
 ## Low — Nice-to-have
 
-### L1. Contrast ratio measurement tool
+### L1. Contrast ratio measurement tool — ✅ DONE (Sprint 2)
 
-Wire `sharp` pixel sampling to extract foreground/background color at a flagged element's coordinates, compute WCAG 2.1 contrast ratio, and include the real number. Would eliminate the most embarrassing class of hallucinated measurements.
+> Implemented: `sharp` pixel sampling at flagged element coordinates, WCAG 2.1 contrast ratio injected into persisted issues. Commit: `e11caf9`.
 
-### L2. Physical device support (Decision 20 Phase 2)
+### L2. Physical device support (Decision 20 Phase 2) — ✅ DONE (Sprint 3)
 
-iOS 26 WDA driver validation + physical device test matrix.
+> Implemented: Phase 1 gate removed; `--runner wda --ios-device <UDID> --team-id <TEAM_ID>` now fully supported. Validated on iPhone iOS 26.3.1. Commit: `90e7167`.
 
 ### L3. `generateObject` → AI SDK v6 migration
 
@@ -204,10 +197,10 @@ Deprecation warnings are currently suppressed. When AI SDK ships the replacement
 | P1 | Post-dogfood | ~30 LOC | Eliminates font specimen false positives | Sprint 1 | ✅ DONE |
 | P3 | Post-dogfood | ~40 LOC | Breaks paginated content stuck loops | Sprint 1 | ✅ DONE |
 | P4+P5 | Post-dogfood | ~60 LOC | Subtree escape + step budget | Sprint 1 | ✅ DONE |
-| M1 | Medium | varies | Covers blind spots incrementally | Sprint 2 | |
-| M2 | Medium | ~50 LOC | Better exploration coverage | Sprint 1–2 | ⏳ PARTIAL |
-| L1 | Low | ~60 LOC | Nice-to-have precision | Sprint 2 | |
-| L2 | Low | large | Phase 2 feature | Sprint 3 | |
-| L3 | Low | medium | Tech debt | Sprint 3 | |
+| M1 | Medium | varies | Covers blind spots incrementally | Sprint 2 | ✅ DONE |
+| M2 | Medium | ~50 LOC | Better exploration coverage | Sprint 2 | ✅ DONE |
+| L1 | Low | ~60 LOC | Nice-to-have precision | Sprint 2 | ✅ DONE |
+| L2 | Low | large | Phase 2 feature | Sprint 3 | ✅ DONE |
+| L3 | Low | medium | Tech debt | Sprint 3 | ⏳ waiting on AI SDK v6 |
 
 **Sprint 1 total**: ~275 LOC across prompt, schema, executor, and dedup. High ROI — transforms the report from "automated noise + correct terminology" (2/10) to "useful first-pass screening tool" (target: 6-7/10).
