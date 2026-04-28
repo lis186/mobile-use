@@ -26,9 +26,9 @@ AI-powered mobile task automation. Natural language → screenshot → AI decisi
 | `phone-use audit <bundleId>` | **no task** — just a bundle id (and optionally `--scope`) | you want the agent to explore the app on its own and emit a Markdown UX audit with annotated screenshots. Stateless, Norman/Nielsen/HIG-grounded, produces `report.md` + `annotated/step-NN.jpg`. Supports iOS 26 simulator (`--runner xctest`) and real devices (`--runner wda`). |
 
 **Known limitations**:
-- Audit mode assumes Gemini 2.5 Flash as the default vision model. Free-tier quota (both RPM and RPD) will throttle or block long runs — see `openspec/changes/add-mobile-ux-audit/handoff.md` §4 for the latest observed behaviour and recommended `--rpm-limit` / `--max-retries` settings.
-- For real device audit: WDA must already be running (see WDA Runner section below). Pass `--runner wda --ios-device <UDID> --team-id <TEAM_ID>`.
-- Run mode (`phone-use run`) is unchanged by the audit work: `src/agent.ts` and `src/executor.ts` only received visibility bumps (`private → protected`) and a shared driver-build helper. No behavioural change. See `openspec/changes/add-mobile-ux-audit/handoff.md` §8.4.
+- Audit mode assumes Gemini 2.5 Flash as the default vision model. Free-tier quota (both RPM and RPD) will throttle or block long runs — safe settings: `--rpm-limit 5 --max-retries 0`. Daily quota resets at UTC midnight; `--rpm-limit` does not help once the daily bucket is gone. See `openspec/changes/add-mobile-ux-audit/phase2-backlog.md` Operational Notes for details.
+- For real device audit: pass `--runner wda --ios-device <UDID> --team-id <TEAM_ID>`. `WDAClient.start()` auto-spawns `xcodebuild test-without-building` + `iproxy` (first launch builds WDA, ~2-3 min; subsequent launches connect in seconds). If a WDA instance is already on port 8100 it reuses it.
+- Run mode (`phone-use run`) is unchanged by the audit work: `src/agent.ts` and `src/executor.ts` only received visibility bumps (`private → protected`) and a shared driver-build helper. No behavioural change.
 
 ## Build & Run
 
@@ -49,33 +49,11 @@ npx tsx src/index.ts run <bundleId> --task "..." --runner <runner>
 
 ### WDA Runner for Physical Devices
 
-WDA must be running before `phone-use`. It does NOT auto-start.
+`WDAClient.start()` (in `src/wda.ts`) handles the full lifecycle: it spawns `iproxy` + `xcodebuild test-without-building`, polls `/status` until ready, creates a session, and registers a `process.exit` cleanup hook. No manual setup is required for the user-facing flow.
 
-```bash
-# 1. Build WDA (once per Xcode version)
-xcodebuild build-for-testing \
-  -project ~/.maestro-runner/drivers/ios/WebDriverAgent/WebDriverAgent.xcodeproj \
-  -scheme WebDriverAgentRunner \
-  -destination "generic/platform=iOS" \
-  DEVELOPMENT_TEAM=<TEAM_ID> \
-  "CODE_SIGN_IDENTITY=Apple Development" \
-  USE_PORT=8100
+When a WDA is already listening on the port (manually started for debugging, or a previous run that didn't clean up), `start()` reuses it and skips spawning. See `checkRunning()` + `killLeftovers()` for the takeover logic.
 
-# 2. Start WDA + port forwarding
-xcodebuild test-without-building \
-  -project ~/.maestro-runner/drivers/ios/WebDriverAgent/WebDriverAgent.xcodeproj \
-  -scheme WebDriverAgentRunner \
-  -destination "id=<DEVICE_UDID>" \
-  DEVELOPMENT_TEAM=<TEAM_ID> \
-  USE_PORT=8100 &
-
-iproxy 8100 8100 -u <DEVICE_UDID> &
-
-# 3. Verify
-curl -s http://localhost:8100/status | python3 -m json.tool
-```
-
-Once WDA is running, `WDAClient.start()` auto-detects and connects.
+**First-launch entitlement caveat**: on a fresh Xcode install, `xcodebuild test-without-building` can fail with a code-signing entitlement error before the WDA bundle has ever been embedded into a `*.xctestrun`. Workaround: run `xcodebuild test ...` manually once for the same scheme/destination, then subsequent runs (auto-spawned by `WDAClient.start()`) work. Document this in user-facing docs, not here.
 
 ## Known Issues
 

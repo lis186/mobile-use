@@ -6,9 +6,34 @@ Execute complex tasks on mobile apps by simply describing what you want to do. p
 
 **[Demo Video](https://drive.google.com/file/d/114EcATHluSHBV1mOlnM5uq7-Ob-TosY9/view)**
 
+phone-use ships two top-level commands. Pick the one that matches your goal:
+
+| If you want to… | Use | Jump to |
+|---|---|---|
+| automate a specific task ("send a message", "fill a form") | `phone-use run` | [Quickstart](#quickstart-run-mode) |
+| get an autonomous UX audit of an iOS app — issues + annotated screenshots, no task to write | `phone-use audit` | [Quickstart](#quickstart-audit-mode) |
+
+### Quickstart — `run` mode
+
 ```bash
 phone-use com.apple.mobilenotes "Create a new note titled 'Meeting Notes' with bullet points for agenda items"
 ```
+
+### Quickstart — `audit` mode
+
+```bash
+# iOS 26 simulator (default — uses the booted simulator)
+phone-use audit com.apple.Preferences --runner xctest
+
+# Real iPhone (WDA auto-builds + auto-launches; first run ~2-3 min)
+phone-use audit com.apple.Preferences \
+  --runner wda --ios-device <UDID> --team-id <TEAM_ID>
+
+# Focus the audit on a specific feature area
+phone-use audit com.apple.Maps --scope "search and route planning"
+```
+
+Outputs land in `audit-output/<timestamp>-<bundleId>/` — `report.md`, `annotated/step-NN.jpg`, `steps.jsonl`, `issues.jsonl`. Full reference: [Autonomous UX Audit](#autonomous-ux-audit-phase-1).
 
 ## How It Works
 
@@ -70,27 +95,34 @@ phone-use supports multiple vision-capable models (Gemini, GPT, etc.) that can a
 
 ## Installation
 
-```bash
-# Install by Cloning
-git clone https://github.com/lis186/phone-use
+phone-use is not published to npm. Install by cloning and linking:
 
-# Configure API keys — copy .env.example to .env and fill in at least one.
+```bash
+# 1. Clone
+git clone https://github.com/lis186/phone-use
+cd phone-use
+
+# 2. Configure API keys — copy .env.example to .env and fill in at least one.
 # For `phone-use audit` the default is Gemini (GOOGLE_GENERATIVE_AI_API_KEY).
 # `phone-use run` also accepts OPENAI_API_KEY when you pass a `gpt-*`/`o*` model.
 cp .env.example .env
 $EDITOR .env
 
-# Install, Build, and link
+# 3. Install, build, and link onto your $PATH
 npm i
 npm run build
 npm link
 
-# Install Maestro CLI
+# 4. (Optional) Install Maestro CLI — only needed for `--runner maestro`
+#    (iOS Simulator ≤18.x). Skip if you only use --runner xctest (iOS 26+
+#    simulator) or --runner wda (real device).
 phone-use install-maestro
 
-# Verify installation
+# 5. Verify
 phone-use check
 ```
+
+To pull updates later: `cd phone-use && git pull && npm i && npm run build` — the existing `npm link` keeps pointing at the rebuilt `dist/`.
 
 ## Usage
 
