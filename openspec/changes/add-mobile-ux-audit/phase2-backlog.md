@@ -1,7 +1,7 @@
 # Audit Feature Backlog
 
 > Canonical backlog for `phone-use audit`. Covers Phase 2 (report quality), post-Phase-2 exploration improvements, open bugs, sprint records, and operational notes.
-> Phase 1 delivered the end-to-end pipeline. Phase 2 focused on **output quality**. All Phase 2 items ✅ except L3 (upstream-blocked) and E1 (designed, pending implementation).
+> Phase 1 delivered the end-to-end pipeline. Phase 2 focused on **output quality**. All Phase 2 items ✅ done (E1 shipped 2026-04-21; L3 already on v6).
 
 ---
 
@@ -133,9 +133,11 @@ Agent gets stuck in loops (Maps "Add to List" cycle, Safari customization loop).
 
 > Implemented: Phase 1 gate removed; `--runner wda --ios-device <UDID> --team-id <TEAM_ID>` now fully supported. Validated on iPhone iOS 26.3.1. Commit: `90e7167`.
 
-### L3. `generateObject` → AI SDK v6 migration
+### L3. `generateObject` → AI SDK v6 migration — ✅ DONE (already on v6)
 
-Deprecation warnings are currently suppressed. When AI SDK ships the replacement API with structured-output + vision guarantees, migrate.
+Project depends on `ai ^6.0.5` and `@ai-sdk/google ^3.0.2` / `@ai-sdk/openai ^3.0.2` (the v6-era line). `generateObject()` is the v6 idiom — no migration needed. No deprecation suppression in code.
+
+v7 is currently in beta (`ai 7.0.0-beta.111`, `@ai-sdk/google 4.0.0-beta.45`); revisit when it stabilises.
 
 ---
 
@@ -201,7 +203,7 @@ Deprecation warnings are currently suppressed. When AI SDK ships the replacement
 | M2 | Medium | ~50 LOC | Better exploration coverage | Sprint 2 | ✅ DONE |
 | L1 | Low | ~60 LOC | Nice-to-have precision | Sprint 2 | ✅ DONE |
 | L2 | Low | large | Phase 2 feature | Sprint 3 | ✅ DONE |
-| L3 | Low | medium | Tech debt | Sprint 3 | ⏳ waiting on AI SDK v6 |
+| L3 | Low | medium | Tech debt | Sprint 3 | ✅ DONE (already on v6) |
 | E1 | Medium | ~60 LOC | Prevents step-budget waste from subtree trap | Post-Phase-4 | ✅ DONE (`8ff2ab9`) |
 
 **Sprint 1 total**: ~275 LOC across prompt, schema, executor, and dedup. High ROI — transforms the report from "automated noise + correct terminology" (2/10) to "useful first-pass screening tool" (target: 6-7/10).
