@@ -254,15 +254,19 @@ Add a `subtreeDepth` counter and `consecutiveDeepSteps` counter to `AuditExecuto
 
 ## Open Bugs
 
-### BUG-A · `xctest.ts` tapText fails on curly apostrophe — ⏳ OPEN
+### BUG-A · `xctest.ts` tapText fails on curly apostrophe — ⏳ DEFERRED (low real-world ROI)
 
 **Observed**: `tapText("Don't have an Apple Account?")` → `[XCTest] Element not found`.
 
-**Cause**: Element on screen uses typographic `'` (U+2019); element's stored accessibility label uses ASCII `'` (U+0027) or vice versa. XCTest element search is exact-match by default.
+**Cause**: Element on screen uses typographic `'` (U+2019); element's stored accessibility label uses ASCII `'` (U+0027) or vice versa. XCTest element search is exact-match by default. Same family of bugs covers smart double quotes (U+201C/D), ellipsis (U+2026), em/en dashes (U+2013/4).
 
-**Fix location**: `src/xctest.ts` tapText element lookup — add NFKC normalization and try both `'` ↔ `'` fallbacks before failing.
+**Fix location**: extract `normalizeForMatch()` to `src/core/text-match.ts`; use it from both `xctest.ts` `findElementByText` and the `wda.ts` accessibility-tree-XML CJK fallback. NFKC + symmetric smart-quote / ellipsis / dash replacement + ZWJ stripping. ~25 LOC + unit tests with explicit codepoint escapes.
 
-**Severity**: Medium. Only affects text-tap actions whose target has smart punctuation. Audit loop handles it gracefully (fail-silent, continues), so report quality is not affected — but missed taps waste steps.
+**Severity**: ~~Medium~~ → **Low**. Audit loop handles failures gracefully (fail-silent, continues), so report quality is unaffected — only wastes steps when triggered.
+
+**ROI verification (2026-04-22)**: Across 5 retained audit runs (`audit-output/2026-04-2{0,1}*` + `dt-dogfood` + `settings-sprint2`), 43 tapText invocations, **0** targets contained smart punctuation. CJK UI dominant; failure mode never observed in retained logs. The original `"Don't have an Apple Account?"` observation came from an earlier run not preserved on disk.
+
+**Trigger to revisit**: next English-UI dogfood (or any audit run where stdout shows `[XCTest] Element not found` on a string containing smart punctuation).
 
 ---
 
