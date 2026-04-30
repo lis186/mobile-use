@@ -4,8 +4,6 @@
 
 Execute complex tasks on mobile apps by simply describing what you want to do. phone-use uses Vision AI to see your screen and automation backends (Maestro/WDA/XCTest) to control the device.
 
-**[Demo Video](https://drive.google.com/file/d/114EcATHluSHBV1mOlnM5uq7-Ob-TosY9/view)**
-
 phone-use ships two top-level commands. Pick the one that matches your goal:
 
 | If you want to… | Use | Jump to |
