@@ -68,7 +68,7 @@ phone-use supports multiple vision-capable models (Gemini, GPT, etc.) that can a
 - **Vision-First AI** - Uses Vision AI to understand screenshots and decide actions
 - **Natural Language Tasks** - Describe what you want in plain English
 - **Cross-Platform** - Works with iOS simulators and Android devices/emulators
-- **Physical iOS Devices** - Supports real iPhones via `maestro-ios-device`
+- **Physical iOS Devices** - Supports real iPhones via the WDA runner (`--runner wda`); auto-builds and launches WebDriverAgent
 - **Multi-App Workflows** - Switch between apps to complete complex tasks
 - **Smart Recovery** - Detects when stuck and tries alternative approaches
 - **Fast Execution** - Optimized for speed with minimal overhead
@@ -91,7 +91,8 @@ phone-use supports multiple vision-capable models (Gemini, GPT, etc.) that can a
 ### For Physical iOS Devices
 - macOS with Xcode
 - Apple Developer account (free tier works)
-- `maestro-ios-device` (install via `phone-use install-ios-device`)
+- **Recommended**: use `--runner wda` — `WDAClient` auto-builds and spawns WebDriverAgent + iproxy, no extra install required (first launch ~2-3 min while Xcode builds WDA, subsequent launches are instant)
+- Optional fallback: `maestro-ios-device` (install via `phone-use install-ios-device`) for `--runner maestro` on iOS ≤18.x. Does not work on iOS 26+
 
 ## Installation
 
@@ -223,7 +224,7 @@ phone-use com.example.app "Create a note" \
 | `-m, --max-steps <n>` | Maximum steps before timeout | `100` |
 | `--model <name>` | AI model to use | `gemini-2.5-flash` |
 | `--language <code>` | Device UI language (`zh-TW`, `ja`, `ko`, etc.) | - |
-| `--runner <type>` | Runner backend: `maestro`, `maestro-runner`, `wda`, or `xctest` | `maestro` |
+| `--runner <type>` | Runner backend: `maestro` (sim ≤18.x), `wda` (real device), `xctest` (sim 26+), or `maestro-runner` (⚠️ broken — tap fails, see CLAUDE.md) | `maestro` |
 | `--device <id>` | Device ID (Android emulator or iOS simulator UDID for xctest) | - |
 | `--ios-device <udid>` | Physical iOS device UDID | - |
 | `--team-id <id>` | Apple Developer Team ID | - |
@@ -299,8 +300,7 @@ reports manually on a per-run basis rather than checking them in.
 See `docs/audit-errors.md` for every `AuditError` code, the most common
 causes, and what to try first when a run fails.
 
-**Phase 1 scope**: iOS 26 Simulator only via the `xctest` runner.
-Physical device audit is a Phase 2 feature.
+**Supported targets**: iOS 26 Simulator via `--runner xctest` (default for the audit command), or a physical iPhone via `--runner wda --ios-device <UDID> --team-id <TEAM_ID>`. Both have been validated end-to-end on real apps.
 
 ## Physical iOS Device Setup
 
@@ -367,8 +367,6 @@ phone-use com.example.app "Create a note" \
 | App launch/stop | ✅ | ✅ |
 | Accessibility tree | ✅ | ❌ |
 | iOS 26+ support | ✅ | ❌ |
-| clearState | ❌ | ⚠️ Reinstalls app |
-| setLocation | ❌ | ⚠️ Limited |
 
 ## 🔍 Examples
 
